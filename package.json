@@ -1,0 +1,34 @@
+{
+  "name": "attention-log",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "format:check": "prettier --check src extension scripts tests package.json tsconfig.json",
+    "format": "prettier --write src extension scripts tests package.json tsconfig.json",
+    "build": "bun scripts/build-extension.ts",
+    "start": "bun src/cli.ts serve",
+    "init": "bun src/cli.ts init",
+    "digest": "bun src/cli.ts digest",
+    "mcp": "bun src/mcp.ts",
+    "demo": "bun scripts/demo.ts",
+    "check": "bun --no-env-file scripts/check.ts",
+    "doctor": "bun --no-env-file scripts/doctor.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@mozilla/readability": "^0.6.0",
+    "ipaddr.js": "^2.2.0",
+    "linkedom": "^0.18.12",
+    "lucide": "^1.47.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.10",
+    "@types/chrome": "^0.1.37",
+    "prettier": "3.6.2",
+    "typescript": "^5.9.3"
+  }
+}

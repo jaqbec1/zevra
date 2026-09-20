@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Attention Log",
+  "version": "0.1.0",
+  "description": "A local, opt-in log of attention to public reading material.",
+  "permissions": ["tabs", "storage", "idle", "alarms"],
+  "host_permissions": ["http://127.0.0.1:3030/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "content_scripts": [
+    {
+      "matches": ["https://*/*", "http://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "options_page": "options.html",
+  "action": {
+    "default_title": "Attention Log — saved pages"
+  },
+  "incognito": "not_allowed"
+}

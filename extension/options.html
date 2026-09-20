@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  /><title>Attention Log settings</title>
+  <style>
+    body {
+      font: 16px system-ui;
+      max-width: 650px;
+      margin: 48px auto;
+      padding: 0 24px;
+      color: #202923;
+      background: #f6f4ed;
+    }
+    h1 {
+      font: 36px Georgia;
+    }
+    label {
+      display: block;
+      margin: 22px 0 8px;
+    }
+    textarea,
+    input[type='password'] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 12px;
+      font: inherit;
+    }
+    button {
+      background: #244b3b;
+      color: white;
+      border: 0;
+      padding: 12px 24px;
+      font: inherit;
+      cursor: pointer;
+    }
+    small {
+      display: block;
+      color: #47574b;
+    }
+    #status {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+  </style>
+  <h1>Attention Log</h1>
+  <p><a href="pages.html">View saved pages →</a></p>
+  <p>
+    Track reading with your site rules. Collection is off until you enable it. Page text and
+    selected text are never collected by this extension.
+  </p>
+  <form id="settings">
+    <label
+      >Collector token
+      <input id="token" type="password" autocomplete="off" required minlength="32" /></label
+    ><small
+      >Copy it from your local Attention Log config. The collector is at 127.0.0.1:3030.</small
+    >
+    <label
+      >Site rules
+      <select id="mode">
+        <option value="allow">Only listed allowed domains</option>
+        <option value="exclude">All sites except exclusions</option>
+      </select>
+    </label>
+    <label
+      >Allowed domains, one per line
+      <textarea id="allowed" rows="4" placeholder="example.org"></textarea></label
+    ><small
+      >Used only in allowed-domain mode. Subdomains are included. Keep these rules in sync with the
+      collector config.</small
+    >
+    <label
+      >Excluded domains, one per line
+      <textarea id="excluded" rows="3"></textarea>
+    </label>
+    <label
+      >Excluded URL prefixes, one per line
+      <textarea id="prefixes" rows="3"></textarea>
+    </label>
+    <label><input id="enabled" type="checkbox" /> Enable capture on allowed sites</label>
+    <label
+      >Excluded URL words, one per line
+      <textarea id="keywords" rows="3" placeholder="settings&#10;login&#10;account"></textarea>
+    </label>
+    <small
+      >Matches anywhere in the decoded URL, ignoring case. These rules cannot detect every logged-in
+      page.</small
+    >
+    <p>
+      Mail, payments, work tools, private networks, and URLs containing authentication parameters
+      are always excluded, including Gmail, ING and Cloudflare dashboards. Public Cloudflare docs
+      and blogs remain eligible under your site rules.
+    </p>
+    <button type="submit">Save settings</button>
+  </form>
+  <p id="status" role="status"></p>
+  <script src="options.js" type="module"></script>
+</html>

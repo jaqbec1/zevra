@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env*
+*.db*
+.codebase-memory/
+coverage/
+.DS_Store
+__pycache__/
+*.pyc

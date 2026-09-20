@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Saved pages · Attention Log</title>
+  <style>
+    :root {
+      font-family: system-ui, sans-serif;
+      color: #192b3a;
+      background: #f3f6f8;
+      color-scheme: light;
+    }
+    body {
+      max-width: 1320px;
+      margin: 40px auto;
+      padding: 0 24px;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+    h1 {
+      font-size: 30px;
+      letter-spacing: -0.8px;
+      margin: 8px 0;
+    }
+    a {
+      color: #1a5377;
+    }
+    p {
+      line-height: 1.6;
+    }
+    .intro {
+      color: #536574;
+      max-width: 660px;
+    }
+    form {
+      display: flex;
+      gap: 12px;
+      margin: 28px 0 16px;
+    }
+    input {
+      flex: 1;
+      min-width: 0;
+    }
+    input,
+    button {
+      font: inherit;
+      padding: 11px 15px;
+      border: 1px solid #adbbc5;
+      border-radius: 6px;
+      background: white;
+    }
+    button {
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    button[type='submit'] {
+      background: #1a5377;
+      color: white;
+      border-color: #1a5377;
+    }
+    :focus-visible {
+      outline: 3px solid #d69726;
+      outline-offset: 3px;
+    }
+    #status {
+      color: #536574;
+      min-height: 24px;
+    }
+    #pages {
+      list-style: none;
+      padding: 0;
+    }
+    article {
+      background: white;
+      border: 1px solid #dce3e8;
+      border-radius: 8px;
+      padding: 20px 22px;
+      margin: 12px 0;
+    }
+    h2 {
+      font-size: 18px;
+      margin: 6px 0 12px;
+      overflow-wrap: anywhere;
+    }
+    h2 a {
+      text-decoration: none;
+    }
+    h2 a:hover {
+      text-decoration: underline;
+    }
+    .domain {
+      font-size: 13px;
+      color: #536574;
+      overflow-wrap: anywhere;
+    }
+    .metrics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 24px;
+      font-size: 14px;
+    }
+    .decision {
+      border-top: 1px solid #e8edf0;
+      margin: 16px 0 0;
+      padding-top: 12px;
+      font-size: 14px;
+      color: #536574;
+    }
+    .bucket {
+      font-weight: 650;
+      color: #192b3a;
+    }
+    nav {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin: 24px 0;
+    }
+    #empty {
+      padding: 36px 0;
+    }
+    footer {
+      font-size: 13px;
+      color: #536574;
+      margin: 36px 0;
+    }
+    @media (max-width: 540px) {
+      body {
+        margin: 20px auto;
+        padding: 0 16px;
+      }
+      header {
+        align-items: flex-start;
+      }
+      h1 {
+        font-size: 25px;
+      }
+      form {
+        flex-wrap: wrap;
+      }
+      input {
+        flex-basis: 100%;
+      }
+      article {
+        padding: 16px;
+      }
+      .metrics {
+        gap: 8px 16px;
+      }
+    }
+    [hidden] {
+      display: none !important;
+    }
+    body {
+      font-size: 15px;
+    }
+    .view-controls {
+      display: flex;
+      gap: 4px;
+      margin: 18px 0 14px;
+    }
+    .view-controls button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 14px;
+    }
+    .view-controls [aria-pressed='true'] {
+      background: #e2edf4;
+      border-color: #1a5377;
+      color: #164566;
+    }
+    svg {
+      flex-shrink: 0;
+      vertical-align: middle;
+    }
+    .metric {
+      display: inline-flex;
+      gap: 7px;
+      align-items: center;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    .metric svg {
+      color: #6a7c8b;
+    }
+    #table-view {
+      overflow: auto;
+      border: 1px solid #dce3e8;
+      border-radius: 8px;
+      background: white;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      min-width: 940px;
+    }
+    th {
+      background: #edf2f5;
+      color: #536574;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      padding: 13px 16px;
+    }
+    td {
+      padding: 17px 16px;
+      border-top: 1px solid #e8edf0;
+      vertical-align: top;
+      font-size: 13px;
+    }
+    th:first-child {
+      width: 36%;
+    }
+    td:first-child {
+      min-width: 260px;
+    }
+    td:last-child {
+      min-width: 170px;
+    }
+    tbody tr:hover {
+      background: #f8fafc;
+    }
+    .page-title a {
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+    .page-title a:hover {
+      text-decoration: underline;
+    }
+    .domain {
+      margin-top: 6px;
+      font-size: 12px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #435360;
+    }
+    .badge.review {
+      color: #8b5b10;
+    }
+    .badge.czytaj,
+    .badge.doczytaj {
+      color: #1a5377;
+    }
+    .badge.utrwal {
+      color: #236045;
+    }
+    .source {
+      display: block;
+      color: #637583;
+      font-size: 12px;
+      margin: 6px 0;
+    }
+    details {
+      font-size: 12px;
+      color: #637583;
+      max-width: 310px;
+    }
+    summary {
+      cursor: pointer;
+    }
+    details p {
+      margin: 8px 0;
+      overflow-wrap: anywhere;
+    }
+    article .metrics {
+      margin: 20px 0;
+    }
+    article .classification {
+      border-top: 1px solid #e8edf0;
+      padding-top: 14px;
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+    }
+  </style>
+  <header>
+    <div>
+      <small>Attention Log</small>
+      <h1>Saved pages</h1>
+    </div>
+    <a href="options.html">Settings</a>
+  </header>
+  <p class="intro">
+    Pages stored in your local database, with attention metrics and classification.
+  </p>
+  <form id="search">
+    <input
+      id="query"
+      type="search"
+      placeholder="Search by title or URL"
+      aria-label="Search pages"
+    /><button type="submit">Search</button><button id="refresh" type="button">Refresh</button>
+  </form>
+  <p id="status" role="status" aria-live="polite"></p>
+  <div class="view-controls" role="group" aria-label="Saved pages view">
+    <button id="view-table" aria-pressed="true">Table</button
+    ><button id="view-cards" aria-pressed="false">Cards</button>
+  </div>
+  <div
+    id="table-view"
+    tabindex="0"
+    role="region"
+    aria-label="Saved pages table — scroll horizontally on small screens"
+  >
+    <table>
+      <caption class="sr-only">
+        Saved pages and attention metrics
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Page</th>
+          <th scope="col">Active time</th>
+          <th scope="col">Scroll depth</th>
+          <th scope="col">Returns</th>
+          <th scope="col">Last active</th>
+          <th scope="col">Classification</th>
+        </tr>
+      </thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+  <ul id="pages" hidden></ul>
+  <p id="empty" hidden>
+    No saved pages match your search. If you just enabled capture, visit an eligible page and wait
+    up to a minute.
+  </p>
+  <nav aria-label="Result pages">
+    <button id="previous">Previous</button><span id="range"></span><button id="next">Next</button>
+  </nav>
+  <footer>
+    This list applies your current exclusions. Active time does not prove that a page was read.
+    Classification may take a few minutes.
+  </footer>
+  <script src="pages.js" type="module"></script>
+</html>
