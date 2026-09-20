@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { initialize, readConfig, dataDirectory } from './config';
+import { initialize, readConfig, dataDirectory, savePolicy } from './config';
 import { Store } from './store';
 import { handler } from './server';
 import { enrich } from './enrich';
@@ -51,7 +51,7 @@ if (command === 'serve') {
     hostname: '127.0.0.1',
     port: config.port,
     maxRequestBodySize: 1_000_000,
-    fetch: handler(store, config),
+    fetch: handler(store, config, savePolicy),
   });
   console.error(`Attention Log listening on ${server.url}`);
   void work();

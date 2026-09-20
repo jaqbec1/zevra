@@ -1,11 +1,15 @@
 import { timingSafeEqual } from 'node:crypto';
 import { Store } from './store';
-import type { Config } from './config';
+import { policySchema, type Config } from './config';
 import { verdictSchema } from './shared/contracts';
 import { allowedUrl } from './shared/policy';
 import { heuristic } from './scoring';
 
-export function handler(store: Store, config: Config) {
+export function handler(
+  store: Store,
+  config: Config,
+  persistPolicy?: (policy: Config['policy']) => void,
+) {
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url),
       origin = request.headers.get('origin');
@@ -83,6 +87,18 @@ export function handler(store: Store, config: Config) {
           chunks.push(next.value);
         }
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      if (url.pathname === '/policy') {
+        const policy = policySchema.parse(body);
+        if (!persistPolicy) return json({ error: 'Policy updates unavailable' }, 503);
+        try {
+          persistPolicy(policy);
+        } catch {
+          return json({ error: 'Could not save policy; retry' }, 503);
+        }
+        // Keep the same object so in-flight background work sees new exclusions too.
+        Object.assign(config.policy, { mode: undefined, excludedKeywords: undefined }, policy);
+        return json({ ok: true });
+      }
       if (url.pathname === '/events') return json(store.ingest(body, config.policy));
       if (url.pathname === '/verdict') {
         const v = verdictSchema.parse(body),

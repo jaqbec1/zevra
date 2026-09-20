@@ -85,6 +85,8 @@ The script asks for the key without echoing characters. It saves the key to `~/.
 
 ## Exclusions and storage
 
+Save site rules in the extension options. They are applied to the running collector and persisted automatically, without restarting it. The status confirms application or shows a pending sync with automatic retries while the collector is offline.
+
 Domain rules include subdomains. `excludedKeywords` matches substrings of the decoded URL without regard to case. The word `account` also excludes a public article if it appears in its URL.
 
 Built-in rules block Gmail, ING, Cloudflare dashboards, local addresses, and URLs with authentication parameters, among others. They do not identify every private or authenticated page. See the [technical reference](docs/reference.md) for detailed rules and limitations.

@@ -1,6 +1,6 @@
 import { emptyState, transition, type TrackerState, type Action, type Tab } from './tracker';
-import { allowedUrl, defaultPolicy, type Policy } from '../src/shared/policy';
-type Settings = { enabled: boolean; token: string; policy: Policy };
+import { allowedUrl, defaultPolicy } from '../src/shared/policy';
+import { sendPolicy, type Settings, type SyncState } from './settings';
 const defaults: Settings = { enabled: false, token: '', policy: defaultPolicy };
 let serial = Promise.resolve();
 // Listeners are registered synchronously; every operation reloads durable state.
@@ -46,7 +46,26 @@ async function update(reason: AttentionEventReason = 'switch', signal?: Action, 
   );
   // Save before network. A crash after delivery will replay the same UUIDs.
   await chrome.storage.local.set({ tracker: next, sessionId });
-  if (flush && next.queue.length && settings.token) {
+  const { policySync } = (await chrome.storage.local.get('policySync')) as {
+    policySync?: SyncState;
+  };
+  let policyReady =
+    !settings.revision || (policySync?.revision === settings.revision && !policySync.error);
+  if (
+    !policyReady &&
+    (policySync?.revision !== settings.revision || (policySync?.retryAt ?? 0) <= now)
+  ) {
+    const error = await sendPolicy(settings);
+    await chrome.storage.local.set({
+      policySync: { revision: settings.revision, error, retryAt: Date.now() + 60_000 },
+    });
+    policyReady = !error;
+  }
+  if (flush && policyReady) {
+    const current = (await chrome.storage.local.get('settings')) as { settings?: Settings };
+    policyReady = current.settings?.revision === settings.revision;
+  }
+  if (flush && policyReady && next.queue.length && settings.token) {
     try {
       const batch = next.queue.slice(0, 250);
       const response = await fetch('http://127.0.0.1:3030/events', {
@@ -72,7 +91,7 @@ async function update(reason: AttentionEventReason = 'switch', signal?: Action, 
     }
   }
   await chrome.action.setBadgeText({
-    text: next.error ? '!' : settings.enabled ? 'ON' : '',
+    text: next.error || !policyReady ? '!' : settings.enabled ? 'ON' : '',
   });
 }
 type AttentionEventReason = 'switch' | 'close' | 'idle' | 'lock' | 'blur' | 'navigate';

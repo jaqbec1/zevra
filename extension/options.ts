@@ -1,4 +1,4 @@
-import type { Policy } from '../src/shared/policy';
+import type { Settings, SyncState } from './settings';
 const field = (id: string) => document.getElementById(id) as HTMLInputElement;
 const lines = (id: string) =>
   field(id)
@@ -7,7 +7,7 @@ const lines = (id: string) =>
     .filter(Boolean);
 const status = document.getElementById('status')!;
 const stored = (await chrome.storage.local.get(['settings', 'tracker', 'lastDeliveryError'])) as {
-  settings?: { token: string; enabled: boolean; policy: Policy };
+  settings?: Settings;
   tracker?: { error?: string };
   lastDeliveryError?: string;
 };
@@ -49,8 +49,10 @@ document.getElementById('settings')!.addEventListener('submit', async (event) =>
     status.textContent = 'Excluded prefixes must be full URLs.';
     return;
   }
+  status.textContent = 'Saving settings…';
   await chrome.storage.local.set({
     settings: {
+      revision: crypto.randomUUID(),
       enabled: field('enabled').checked,
       token: field('token').value.trim(),
       policy: {
@@ -62,6 +64,20 @@ document.getElementById('settings')!.addEventListener('submit', async (event) =>
       },
     },
   });
-  status.textContent =
-    'Saved. Collector policy also applies; restart the collector after changing its config.';
+  await showSyncStatus();
 });
+async function showSyncStatus() {
+  const { settings, policySync } = (await chrome.storage.local.get(['settings', 'policySync'])) as {
+    settings?: Settings;
+    policySync?: SyncState;
+  };
+  if (!settings?.revision) return;
+  status.textContent =
+    policySync?.revision === settings.revision
+      ? policySync.error || 'Saved and applied to the collector. No restart needed.'
+      : 'Saved locally. Applying settings to the collector…';
+}
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && (changes.policySync || changes.settings)) void showSyncStatus();
+});
+await showSyncStatus();

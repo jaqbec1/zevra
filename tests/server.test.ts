@@ -1,7 +1,10 @@
 import { test, expect } from 'bun:test';
 import { handler } from '../src/server';
 import { Store } from '../src/store';
-import type { Config } from '../src/config';
+import { savePolicy, type Config } from '../src/config';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 const config: Config = {
   token: 'test-token'.repeat(8),
   port: 3030,
@@ -27,6 +30,64 @@ function event() {
     max_scroll: 0.5,
   };
 }
+test('saving policy applies to the running collector without restart and survives restart', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'zevra-policy-'));
+  const file = join(directory, 'config.json');
+  const live = structuredClone(config);
+  writeFileSync(file, JSON.stringify(live));
+  const s = new Store();
+  const run = handler(s, live, (policy) => savePolicy(policy, file));
+  const headers = { Authorization: 'Bearer ' + config.token, 'Content-Type': 'application/json' };
+  const save = (body: unknown, extra = headers) =>
+    run(
+      new Request('http://127.0.0.1/policy', {
+        method: 'POST',
+        headers: extra,
+        body: JSON.stringify(body),
+      }),
+    );
+  try {
+    s.ingest([event()], live.policy);
+    const policy = { ...live.policy, excludedDomains: ['example.com'] };
+    expect((await save(policy, { ...headers, Authorization: '' })).status).toBe(401);
+    expect((await save({ ...policy, token: 'cannot-change-token' })).status).toBe(400);
+    expect((await save(policy)).status).toBe(200);
+    expect(live.policy).toEqual(policy);
+    const pages = await run(new Request('http://127.0.0.1/pages', { headers }));
+    expect((await pages.json()).total).toBe(0);
+    await run(
+      new Request('http://127.0.0.1/events', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify([event()]),
+      }),
+    );
+    expect(s.metrics(1).active_ms).toBe(20_000);
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ ...config, policy });
+    const unavailable = handler(s, live, () => {
+      throw new Error('disk full');
+    });
+    expect(
+      (
+        await unavailable(
+          new Request('http://127.0.0.1/policy', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(config.policy),
+          }),
+        )
+      ).status,
+    ).toBe(503);
+    expect(live.policy.excludedDomains).toEqual(['example.com']);
+    const restarted = handler(s, JSON.parse(readFileSync(file, 'utf8')));
+    expect(
+      (await (await restarted(new Request('http://127.0.0.1/pages', { headers }))).json()).total,
+    ).toBe(0);
+  } finally {
+    s.close();
+    rmSync(directory, { recursive: true });
+  }
+});
 test('HTTP auth, origin and host boundaries reject untrusted writes', async () => {
   const s = new Store(),
     run = handler(s, config);

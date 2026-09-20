@@ -1,4 +1,12 @@
-import { chmodSync, mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  renameSync,
+  rmSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
@@ -54,4 +62,17 @@ export function initialize() {
 }
 export function readConfig(): Config {
   return configSchema.parse(JSON.parse(readFileSync(configPath(), 'utf8')));
+}
+export const policySchema = configSchema.shape.policy.strict();
+export function savePolicy(policy: Config['policy'], path = configPath()) {
+  const current = JSON.parse(readFileSync(path, 'utf8'));
+  configSchema.parse(current);
+  const next = { ...current, policy: policySchema.parse(policy) };
+  const temporary = path + '.' + crypto.randomUUID() + '.tmp';
+  try {
+    writeFileSync(temporary, JSON.stringify(next, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
+    renameSync(temporary, path);
+  } finally {
+    rmSync(temporary, { force: true });
+  }
 }

@@ -27,6 +27,7 @@ export async function enrich(store: Store, policy: Policy, fetcher = fetchHtml, 
     if (!allowedUrl(page.url_norm, policy)) continue;
     try {
       const content = extract(await fetcher(page.url_norm, policy));
+      if (!allowedUrl(page.url_norm, policy)) continue;
       store.db
         .query(
           "UPDATE pages SET excerpt=?,word_count=?,lang=?,fetched_at=?,fetch_status='ok',fetch_attempts=fetch_attempts+1 WHERE id=?",

@@ -30,6 +30,20 @@ function setup() {
     .run('x'.repeat(2500), now);
   return s;
 }
+test('a new exclusion during classification prevents storing its result', async () => {
+  const s = setup();
+  const livePolicy = { ...policy, excludedDomains: [] as string[] };
+  try {
+    await classify(s, { enabled: true, apiKey: 'test', policy: livePolicy }, async () => {
+      livePolicy.excludedDomains = ['example.com'];
+      return new Response('', { status: 429 });
+    });
+    expect(s.verdict(1)).toBeNull();
+    expect(s.db.query('SELECT COUNT(*) AS n FROM classifications').get()).toEqual({ n: 0 });
+  } finally {
+    s.close();
+  }
+});
 test('Jev uses Choice API with capped state and escalates uncertainty without a score gate', async () => {
   const s = setup();
   let body: any;

@@ -130,6 +130,7 @@ export async function classify(
       }
     } else if (page.word_count !== null && page.word_count < 150)
       v = { ...v, bucket: 'zapomnij', reason: 'Below 150 extracted words.' };
+    if (!allowedUrl(page.url_norm, config.policy)) continue;
     store.setVerdict(v);
     // Errors retry on a later sweep; a cooldown avoids request storms.
     store.db
