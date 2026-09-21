@@ -8,9 +8,9 @@ Zevra is a standalone Swift macOS app that records eligible Arc page URLs, title
 
 Requires macOS 14 or later; supports Apple Silicon and Intel. Unzip and move `Zevra.app` to Applications, open it, grant Accessibility access, and enable capture. Allowed domains are optional. **Active time** is recorded foreground time; **Last seen** is the fixed date of the last observation.
 
-This download is an **unnotarized, ad-hoc-signed, local-only preview**. Gatekeeper may block the first launch; if you trust this build, use System Settings → Privacy & Security → Open Anyway. iCloud sync is not included in the download: the current iCloud build requires personal development provisioning. Separately provisioned development builds retain iCloud support. A notarized iCloud distribution build is not yet available.
+This download is a **Developer ID–signed, Apple-notarized, local-only preview**. The notarization ticket is attached to the app. iCloud sync is not included in the download: the current iCloud build requires personal development provisioning. Separately provisioned development builds retain iCloud support. A notarized iCloud distribution build is not yet available.
 
-Native setup and verification: [macOS documentation](docs/macos-prototype.md). To reproduce the downloadable archive, run `sh macos/check.sh` and `sh macos/package-preview.sh` with Xcode installed. Artifacts are written to `macos/build/artifacts/`.
+Native setup and verification: [macOS documentation](docs/macos-prototype.md). To build a local preview, run `sh macos/check.sh` and `sh macos/package-preview.sh` with Xcode installed. Artifacts are written to `macos/build/artifacts/`. That script produces an ad-hoc-signed build; the public download additionally goes through Developer ID signing, Apple notarization, and ticket stapling before packaging.
 
 ## Original extension and collector
 
