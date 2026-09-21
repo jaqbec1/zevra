@@ -59,25 +59,48 @@ public final class ObservationStore {
     }
   }
 
-  public func recent(limit: Int = 100) throws -> [Observation] {
+  public func recent(
+    limit: Int = 100, search: String = "", policy: CapturePolicy? = nil
+  ) throws -> [Observation] {
+    guard limit > 0 else { return [] }
     let context = container.viewContext
     // All local writes are saved immediately, so imported changes can safely refresh this context.
     context.refreshAllObjects()
     let request = NSFetchRequest<NSManagedObject>(entityName: "Observation")
-    request.sortDescriptors = [NSSortDescriptor(key: "lastSeenAt", ascending: false)]
-    request.fetchLimit = limit
-    return try context.fetch(request).compactMap { object in
-      guard let id = object.value(forKey: "id") as? UUID,
-        let deviceID = object.value(forKey: "deviceID") as? String,
-        let url = object.value(forKey: "url") as? String,
-        let started = object.value(forKey: "startedAt") as? Date,
-        let last = object.value(forKey: "lastSeenAt") as? Date
-      else { return nil }
-      return Observation(
-        id: id, deviceID: deviceID, url: url, title: object.value(forKey: "title") as? String ?? "",
-        startedAt: started, lastSeenAt: last,
-        activeSeconds: object.value(forKey: "activeSeconds") as? Double ?? 0)
+    request.sortDescriptors = [
+      NSSortDescriptor(key: "lastSeenAt", ascending: false),
+      NSSortDescriptor(key: "id", ascending: true),
+    ]
+    let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !query.isEmpty {
+      request.predicate = NSPredicate(
+        format: "title CONTAINS[cd] %@ OR url CONTAINS[cd] %@", query, query)
     }
+    // Apply URL rules before the visible limit, including when an entire batch is excluded.
+    request.fetchLimit = 200
+    var observations: [Observation] = []
+    while observations.count < limit {
+      let batch = try context.fetch(request)
+      for object in batch {
+        guard let id = object.value(forKey: "id") as? UUID,
+          let deviceID = object.value(forKey: "deviceID") as? String,
+          let url = object.value(forKey: "url") as? String,
+          let started = object.value(forKey: "startedAt") as? Date,
+          let last = object.value(forKey: "lastSeenAt") as? Date,
+          policy == nil || policy?.acceptedURL(url) != nil
+        else { continue }
+        observations.append(
+          Observation(
+            id: id, deviceID: deviceID, url: url,
+            title: object.value(forKey: "title") as? String ?? "",
+            startedAt: started, lastSeenAt: last,
+            activeSeconds: object.value(forKey: "activeSeconds") as? Double ?? 0))
+        if observations.count == limit { break }
+      }
+      if batch.count < request.fetchLimit { break }
+      request.fetchOffset += batch.count
+    }
+    return observations
   }
 
   public func close() throws {

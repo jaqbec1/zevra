@@ -3,6 +3,37 @@ import Testing
 
 @testable import AttentionCore
 
+@Test @MainActor func browsingSearchesOlderMaterialsAndFiltersBeforeLimiting() throws {
+  let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: directory) }
+  let store = try ObservationStore(url: directory.appendingPathComponent("browse.sqlite"))
+  defer { try? store.close() }
+  let now = Date()
+  for index in 0..<310 {
+    let blocked = index < 205
+    try store.save(
+      Observation(
+        id: UUID(), deviceID: "synthetic-mac",
+        url: "https://\(blocked ? "excluded.example.com" : "example.org")/material/\(index)",
+        title: index == 309 ? "Café: a video worth revisiting" : "Material \(index)",
+        startedAt: now.addingTimeInterval(-Double(index + 1)),
+        lastSeenAt: now.addingTimeInterval(-Double(index)), activeSeconds: 10))
+  }
+  let policy = CapturePolicy(enabled: true, excludedDomains: ["excluded.example.com"])
+  let first = try store.recent(limit: 101, policy: policy)
+  #expect(first.count == 101)
+  #expect(first.first?.url == "https://example.org/material/205")
+  #expect(first.last?.url == "https://example.org/material/305")
+  #expect(try store.recent(limit: 201, policy: policy).count == 105)
+  #expect(
+    try store.recent(limit: 100, search: "  CAFE  ", policy: policy).first?.title
+      == "Café: a video worth revisiting")
+  #expect(try store.recent(search: "/material/309", policy: policy).count == 1)
+  #expect(try store.recent(search: "excluded.example.com", policy: policy).isEmpty)
+  #expect(try store.recent(search: "no such material", policy: policy).isEmpty)
+  #expect(try store.recent(limit: 0, policy: policy).isEmpty)
+}
+
 @Test @MainActor func unavailableStorageFailsWithoutReplacingExistingData() throws {
   let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
   try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

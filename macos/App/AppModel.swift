@@ -9,6 +9,13 @@ import ServiceManagement
 @MainActor
 final class AppModel: ObservableObject {
   @Published private(set) var observations: [Observation] = []
+  @Published private(set) var hasMoreObservations = false
+  @Published var searchText = "" {
+    didSet {
+      visibleLimit = 100
+      refresh()
+    }
+  }
   @Published private(set) var capturing = false
   @Published private(set) var status = "Capture is paused"
   @Published private(set) var syncStatus = "Local build · iCloud not configured"
@@ -29,7 +36,14 @@ final class AppModel: ObservableObject {
   private var activity = ActivityGate()
   private var cloudContainer: String?
   private var policy = CapturePolicy()
+  private var visibleLimit = 100
   private let defaults = UserDefaults.standard
+
+  private var viewingPolicy: CapturePolicy {
+    var value = policy
+    value.enabled = true
+    return value
+  }
 
   init(demo: Bool = ProcessInfo.processInfo.arguments.contains("--demo")) {
     self.demo = demo
@@ -154,11 +168,46 @@ final class AppModel: ObservableObject {
 
   func refresh() {
     do {
-      let all = try store?.recent() ?? []
-      var viewingPolicy = policy
-      viewingPolicy.enabled = true
-      observations = demo ? all : all.filter { viewingPolicy.acceptedURL($0.url) != nil }
-    } catch { notice = "Could not read observations. Try reopening the app." }
+      let results =
+        try store?.recent(
+          limit: visibleLimit + 1, search: searchText, policy: viewingPolicy) ?? []
+      hasMoreObservations = results.count > visibleLimit
+      observations = Array(results.prefix(visibleLimit))
+    } catch {
+      observations = []
+      hasMoreObservations = false
+      notice = "Could not read saved materials. Try refreshing or reopening the app."
+    }
+  }
+
+  func loadMore() {
+    visibleLimit += 100
+    refresh()
+  }
+
+  func openMaterial(_ observation: Observation) {
+    guard let url = materialURL(observation) else { return }
+    if !NSWorkspace.shared.open(url) {
+      notice = "Could not open this link. Check your default browser or copy the link instead."
+    }
+  }
+
+  func copyLink(_ observation: Observation) {
+    guard let url = materialURL(observation) else { return }
+    NSPasteboard.general.clearContents()
+    if !NSPasteboard.general.setString(url.absoluteString, forType: .string) {
+      notice = "Could not copy this link. Try again."
+    }
+  }
+
+  private func materialURL(_ observation: Observation) -> URL? {
+    guard viewingPolicy.acceptedURL(observation.url) != nil,
+      let url = URL(string: observation.url)
+    else {
+      notice = "This link is unavailable under your current site rules."
+      return nil
+    }
+    return url
   }
 
   private func tick() {

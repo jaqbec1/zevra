@@ -4,6 +4,14 @@ The user selected Swift and SwiftUI on 2026-09-21. The first slice is a menu-bar
 
 The app is now named **Zevra** and is installed at `/Applications/Zevra.app`. It uses a regular macOS application window, with Dock and Command-Tab access, while retaining its menu-bar controls. Losing focus does not close the window. Existing technical identifiers (`com.jamatyka.AttentionLog`, the CloudKit container, and the local storage directory) remain stable across the display-name change.
 
+## Browse saved materials
+
+The **Saved materials** view searches titles and URLs across the native app's stored history, including visits older than the first 100 shown. Search ignores letter case and diacritics. **Load more** shows another 100 matching visits; **Clear search** restores the recent list. Each row remains one visit, so repeated visits to an article or video appear separately.
+
+Choose **Open** to open the original article or video in the default browser, or **Copy link** to copy its full saved URL. Both actions are also available in the row's context menu. Zevra does not store offline copies or play videos inside its window. Site exclusions still apply to searches and to opening or copying a link, even while capture is paused.
+
+This view uses the native observation store. It does not import the older Bun collector history or a personal profile, and does not call Jev.
+
 ## Run locally
 
 ### 0.1.1 preview verification
