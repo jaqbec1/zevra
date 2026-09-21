@@ -43,6 +43,10 @@ private struct ObservationsView: View {
   @ObservedObject var model: AppModel
   @State private var showSetup = true
 
+  private var isSearching: Bool {
+    !model.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 20) {
       HStack(alignment: .top) {
@@ -127,8 +131,11 @@ private struct ObservationsView: View {
       }
 
       HStack {
-        Text("Recent observations").font(.headline)
-        Text("\(model.observations.count)").foregroundStyle(.secondary)
+        Text("Saved materials").font(.headline)
+        Text(
+          "\(model.observations.count) \(model.observations.count == 1 ? "visit" : "visits") shown"
+        )
+        .foregroundStyle(.secondary)
         Spacer()
         Button {
           model.refresh()
@@ -136,11 +143,32 @@ private struct ObservationsView: View {
           Label("Refresh", systemImage: "arrow.clockwise")
         }
       }
+      HStack {
+        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+        TextField("Search titles or URLs", text: $model.searchText)
+          .textFieldStyle(.plain)
+          .accessibilityLabel("Search saved materials")
+        if !model.searchText.isEmpty {
+          Button {
+            model.searchText = ""
+          } label: {
+            Image(systemName: "xmark.circle.fill")
+          }
+          .buttonStyle(.plain)
+          .accessibilityLabel("Clear search")
+          .help("Clear search")
+        }
+      }
+      .padding(10)
+      .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
       if model.observations.isEmpty {
         ContentUnavailableView(
-          "No observations yet", systemImage: "text.book.closed",
+          isSearching ? "No matching materials" : "No saved materials yet",
+          systemImage: isSearching ? "magnifyingglass" : "text.book.closed",
           description: Text(
-            "Enable capture and spend a few seconds on an eligible page in Arc. Allowed domains are optional. Idle time and other applications are excluded."
+            isSearching
+              ? "Try a different title or URL, or clear the search."
+              : "Enable capture and spend a few seconds on an eligible page in Arc. Materials excluded by your site rules are hidden."
           )
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -152,6 +180,7 @@ private struct ObservationsView: View {
               Text(observation.title.isEmpty ? "Untitled page" : observation.title)
                 .font(.headline).lineLimit(2)
               Text(observation.url).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                .help(observation.url)
               HStack(spacing: 12) {
                 Text(observation.deviceID == model.deviceID ? "This Mac" : "Another Mac")
                 Text(
@@ -169,10 +198,36 @@ private struct ObservationsView: View {
               .monospacedDigit()
             }
             .foregroundStyle(.secondary)
-          }.padding(.vertical, 8)
+            VStack(spacing: 8) {
+              Button {
+                model.openMaterial(observation)
+              } label: {
+                Label("Open", systemImage: "arrow.up.right")
+              }
+              .help("Open in your default browser")
+              Button {
+                model.copyLink(observation)
+              } label: {
+                Label("Copy link", systemImage: "doc.on.doc")
+              }
+              .help("Copy the full URL")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+          }
+          .padding(.vertical, 8)
+          .accessibilityElement(children: .contain)
+          .contextMenu {
+            Button("Open in browser") { model.openMaterial(observation) }
+            Button("Copy link") { model.copyLink(observation) }
+          }
         }
         .listStyle(.inset)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+      }
+      if model.hasMoreObservations {
+        Button("Load more") { model.loadMore() }
+          .frame(maxWidth: .infinity)
       }
       Text(
         model.demo
