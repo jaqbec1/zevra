@@ -1,0 +1,6 @@
+.build/
+.swiftpm/
+build/
+build-cloud/
+*.xcodeproj/xcuserdata/
+Signing.local.xcconfig

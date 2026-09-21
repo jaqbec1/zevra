@@ -1,0 +1,64 @@
+name: AttentionLog
+options:
+  deploymentTarget:
+    macOS: "14.0"
+configs:
+  Debug: debug
+  Cloud: debug
+  Release: release
+configFiles:
+  Debug: Signing.xcconfig
+  Cloud: Signing.xcconfig
+  Release: Signing.xcconfig
+packages:
+  AttentionCore:
+    path: .
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    PRODUCT_BUNDLE_IDENTIFIER: com.jamatyka.AttentionLog
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_HARDENED_RUNTIME: YES
+    CODE_SIGN_STYLE: Automatic
+    ATTENTION_CLOUD_CONTAINER: iCloud.com.jamatyka.AttentionLog
+    ATTENTION_CLOUD_ENABLED: NO
+  configs:
+    Debug:
+      CODE_SIGN_IDENTITY: "-"
+    Cloud:
+      ATTENTION_CLOUD_ENABLED: YES
+      CODE_SIGN_ENTITLEMENTS: App/Cloud.entitlements
+targets:
+  AttentionLog:
+    type: application
+    platform: macOS
+    sources: [App]
+    dependencies:
+      - package: AttentionCore
+    attributes:
+      SystemCapabilities:
+        com.apple.iCloud:
+          enabled: 1
+        com.apple.Push:
+          enabled: 1
+    settings:
+      base:
+        INFOPLIST_FILE: App/Info.plist
+        PRODUCT_NAME: Zevra
+schemes:
+  AttentionLog:
+    build:
+      targets:
+        AttentionLog: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+  AttentionLog-Cloud:
+    build:
+      targets:
+        AttentionLog: all
+    run:
+      config: Cloud
