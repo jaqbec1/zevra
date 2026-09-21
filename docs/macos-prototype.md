@@ -6,6 +6,16 @@ The app is now named **Zevra** and is installed at `/Applications/Zevra.app`. It
 
 ## Run locally
 
+### 0.1.1 preview verification
+
+The apparent background timer was the unlabeled SwiftUI relative `lastSeenAt` date, which kept advancing independently of capture. Two read-only checks of the public example.com test visit returned the same 24.6796 active seconds while Arc was not foreground. The UI now labels **Active time** separately and renders **Last seen** as a fixed date and time. Capture accounting and stored records were not changed.
+
+The settings disclosure uses a custom header with its focus effect disabled only on that header. Mouse collapse and keyboard Tab/Space expansion were checked in the installed app; the clipped blue outline is gone and domain fields keep their normal focus behavior. These presentation defects have no Swift package test seam, so verification used the actual window rather than a test of duplicated formatting logic.
+
+All nine native tests, Swift formatting, the local build, the signed Cloud build, and the universal Release build passed. The installed Cloud app retained Accessibility permission. Targeted manual review and reuse/quality/efficiency review of the changed files found no further changes needed. Intel execution, Gatekeeper first launch on another Mac, notarization, and cross-device iCloud sync were not verified.
+
+`sh macos/package-preview.sh` creates an ad-hoc-signed universal ZIP and SHA-256 checksum in `macos/build/artifacts/`. It deliberately uses Release with iCloud disabled and no development provisioning profile. The public preview is unnotarized; Cloud distribution requires a separate distribution-signing/provisioning setup. Do not replace an iCloud development installation with the local-only preview if you want to keep syncing.
+
 Requires Xcode with the macOS SDK, Swift 6, and macOS 14 or later. The Xcode project is checked in; XcodeGen is needed only after editing `macos/project.yml`.
 
 ```sh

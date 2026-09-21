@@ -123,6 +123,7 @@ private struct ObservationsView: View {
             }
           }.padding(.top, 12)
         }
+        .disclosureGroupStyle(CaptureSettingsStyle())
       }
 
       HStack {
@@ -153,15 +154,21 @@ private struct ObservationsView: View {
               Text(observation.url).font(.caption).foregroundStyle(.secondary).lineLimit(1)
               HStack(spacing: 12) {
                 Text(observation.deviceID == model.deviceID ? "This Mac" : "Another Mac")
-                Text(observation.lastSeenAt, style: .relative)
+                Text(
+                  "Last seen: \(observation.lastSeenAt.formatted(date: .abbreviated, time: .shortened))"
+                )
               }.font(.caption2).foregroundStyle(.tertiary)
             }
             Spacer()
-            Text(
-              Duration.seconds(observation.activeSeconds).formatted(
-                .units(allowed: [.minutes, .seconds], width: .abbreviated))
-            )
-            .monospacedDigit().foregroundStyle(.secondary)
+            VStack(alignment: .trailing, spacing: 5) {
+              Text("Active time").font(.caption)
+              Text(
+                Duration.seconds(observation.activeSeconds).formatted(
+                  .units(allowed: [.minutes, .seconds], width: .abbreviated))
+              )
+              .monospacedDigit()
+            }
+            .foregroundStyle(.secondary)
           }.padding(.vertical, 8)
         }
         .listStyle(.inset)
@@ -183,6 +190,27 @@ private struct ObservationsView: View {
       Button("OK") { model.notice = nil }
     } message: {
       Text(model.notice ?? "")
+    }
+  }
+}
+
+private struct CaptureSettingsStyle: DisclosureGroupStyle {
+  func makeBody(configuration: Configuration) -> some View {
+    VStack(alignment: .leading, spacing: 0) {
+      Button {
+        configuration.isExpanded.toggle()
+      } label: {
+        HStack(spacing: 6) {
+          Image(systemName: configuration.isExpanded ? "chevron.down" : "chevron.right")
+            .font(.caption.weight(.semibold))
+          configuration.label
+        }
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .focusEffectDisabled()
+      .accessibilityValue(configuration.isExpanded ? "Expanded" : "Collapsed")
+      if configuration.isExpanded { configuration.content }
     }
   }
 }

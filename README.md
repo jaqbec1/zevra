@@ -1,4 +1,18 @@
-# Attention Log
+# Zevra
+
+Zevra is a standalone Swift macOS app that records eligible Arc page URLs, titles, and estimated active time. No browser extension or local server is needed for the native app.
+
+## Download the macOS preview
+
+[Download Zevra 0.1.1 for macOS](https://github.com/jaqbec1/zevra/releases/download/v0.1.1/Zevra-macOS-universal.zip) · [Release notes and checksums](https://github.com/jaqbec1/zevra/releases/tag/v0.1.1)
+
+Requires macOS 14 or later; supports Apple Silicon and Intel. Unzip and move `Zevra.app` to Applications, open it, grant Accessibility access, and enable capture. Allowed domains are optional. **Active time** is recorded foreground time; **Last seen** is the fixed date of the last observation.
+
+This download is an **unnotarized, ad-hoc-signed, local-only preview**. Gatekeeper may block the first launch; if you trust this build, use System Settings → Privacy & Security → Open Anyway. iCloud sync is not included in the download: the current iCloud build requires personal development provisioning. Separately provisioned development builds retain iCloud support. A notarized iCloud distribution build is not yet available.
+
+Native setup and verification: [macOS documentation](docs/macos-prototype.md). To reproduce the downloadable archive, run `sh macos/check.sh` and `sh macos/package-preview.sh` with Xcode installed. Artifacts are written to `macos/build/artifacts/`.
+
+## Original extension and collector
 
 Attention Log records how much attention you give to web pages and creates a short list of material to read or keep. The extension runs in Arc and Chrome. Data goes into a local SQLite database; summaries are written as Markdown files.
 
