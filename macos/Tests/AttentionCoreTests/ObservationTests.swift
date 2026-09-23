@@ -144,6 +144,28 @@ import Testing
   try reopened.close()
 }
 
+@Test @MainActor func activeTimeAccumulatesAcrossVisitsWithoutDoubleCountingUpdates() throws {
+  let store = try ObservationStore(url: nil)
+  defer { try? store.close() }
+  let url = "https://example.com/article"
+  let first = Observation(
+    id: UUID(), deviceID: "synthetic-mac", url: url, title: "Fixture",
+    startedAt: .distantPast, lastSeenAt: Date(), activeSeconds: 6)
+  let second = Observation(
+    id: UUID(), deviceID: "synthetic-mac", url: url, title: "Fixture",
+    startedAt: .distantPast, lastSeenAt: Date(), activeSeconds: 5)
+  try store.save(first)
+  #expect(try store.activeSeconds(for: url) == 6)
+  try store.save(second)
+  try store.save(second)
+  #expect(try store.activeSeconds(for: url) == 11)
+  var updated = first
+  updated.activeSeconds = 8
+  try store.save(updated)
+  #expect(try store.activeSeconds(for: url) == 13)
+  #expect(try store.activeSeconds(for: "https://example.com/other") == 0)
+}
+
 @Test func wakingDisplayDoesNotReactivateAnotherUsersSession() {
   var activity = ActivityGate()
   #expect(activity.permitsCapture(idleSeconds: 0))

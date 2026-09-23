@@ -11,6 +11,7 @@
 		B16F4F41E46479BC78A2BAD1 /* AttentionCore in Frameworks */ = {isa = PBXBuildFile; productRef = 375CD385E55389858B76E604 /* AttentionCore */; };
 		C3773770107DBB85940F25BA /* ArcReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 413429F1C92F7C44E9883AA6 /* ArcReader.swift */; };
 		DB1577B7433E0219E93AFEA3 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45E7B40496CF504B77293F1C /* AppModel.swift */; };
+		AB1234567890ABCDEF123456 /* JevClassification.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1234567890ABCDEF123457 /* JevClassification.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -19,6 +20,7 @@
 		45E7B40496CF504B77293F1C /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		514E2F26BEAD82D0EED27AA3 /* macos */ = {isa = PBXFileReference; lastKnownFileType = folder; name = macos; path = .; sourceTree = SOURCE_ROOT; };
 		6B804C4EFF97418FAC6A788B /* AttentionLogApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttentionLogApp.swift; sourceTree = "<group>"; };
+		AB1234567890ABCDEF123457 /* JevClassification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JevClassification.swift; sourceTree = "<group>"; };
 		7B6269FE62AE80B8BDB97BBC /* Cloud.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Cloud.entitlements; sourceTree = "<group>"; };
 		CC80B3CD6C19E12FB9A2F0BF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		FB7035C229542EBF42C44E79 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
@@ -51,6 +53,7 @@
 				45E7B40496CF504B77293F1C /* AppModel.swift */,
 				413429F1C92F7C44E9883AA6 /* ArcReader.swift */,
 				6B804C4EFF97418FAC6A788B /* AttentionLogApp.swift */,
+				AB1234567890ABCDEF123457 /* JevClassification.swift */,
 				7B6269FE62AE80B8BDB97BBC /* Cloud.entitlements */,
 				CC80B3CD6C19E12FB9A2F0BF /* Info.plist */,
 			);
@@ -150,6 +153,7 @@
 				DB1577B7433E0219E93AFEA3 /* AppModel.swift in Sources */,
 				C3773770107DBB85940F25BA /* ArcReader.swift in Sources */,
 				978B8AE289BFADA7445DAD9E /* AttentionLogApp.swift in Sources */,
+				AB1234567890ABCDEF123456 /* JevClassification.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -240,7 +244,7 @@
 				CODE_SIGN_ENTITLEMENTS = App/Cloud.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -260,7 +264,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.1;
+				MARKETING_VERSION = 0.2.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -312,7 +316,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -332,7 +336,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.1;
+				MARKETING_VERSION = 0.2.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -383,7 +387,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -397,7 +401,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.1;
+				MARKETING_VERSION = 0.2.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jamatyka.AttentionLog;

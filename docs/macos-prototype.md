@@ -10,9 +10,21 @@ The **Saved materials** view searches titles and URLs across the native app's st
 
 Choose **Open** to open the original article or video in the default browser, or **Copy link** to copy its full saved URL. Both actions are also available in the row's context menu. Zevra does not store offline copies or play videos inside its window. Site exclusions still apply to searches and to opening or copying a link, even while capture is paused.
 
-This view uses the native observation store. It does not import the older Bun collector history or a personal profile, and does not call Jev.
+This view uses the native observation store. It does not import the older Bun collector history or a personal profile. Jev suggestions are a separate, optional native feature.
+
+## Jev suggestions (0.2.0 local build)
+
+In **Settings → Jev suggestions**, save a TypeSafe API key to this Mac's Keychain, then explicitly enable classification. Saving the key alone does not enable it. Capture and Jev have separate switches. Removing the key turns Jev off; neither action deletes observations or human corrections. The key is not printed, placed in the repository, or synced with CloudKit.
+
+After an eligible HTTPS page accumulates 10 active seconds across saved visits, Zevra fetches public HTML without Arc cookies or redirects. If it extracts at least 80 words, it sends the title, domain, and up to 2,000 characters of page text to TypeSafe's `jev-latest` Choice endpoint. This occurs while the page can still be open; switching away and closing are not triggers. It does not backfill older visits when Jev is enabled. Failed fetches and provider errors leave the visit intact and retry at most three times, at least five minutes apart. Exclusions are checked before fetching and before submitting. A result is reused for unchanged evidence; active pages may be rechecked after an hour for content changes.
+
+The row labels the provider suggestion and shows **Needs review** below 0.6 confidence. The ellipsis menu lets the user choose **Read deeper**, **Keep as reference**, or **No obvious follow-up**; a human choice takes precedence permanently. Suggestions and corrections live in a separate local `classifications.json` file with owner-only permissions, outside the CloudKit observation schema. The file contains page URLs and judgments, not the API key. The native app does not read the Bun collector database or run a digest. Model quality and a live provider response have not yet been verified for this build.
 
 ## Run locally
+
+### 0.2.0 local installation
+
+The 0.2.0 local build was compiled for Apple Silicon and Intel, signed with the same Developer ID team and bundle ID as the installed 0.1.1 app, and installed at `/Applications/Zevra.app`. The notarized 0.1.1 app was preserved in `macos/build/backups/Zevra-0.1.1-notarized.zip` (and an unpacked copy in that directory). The new local build has a valid Developer ID signature but no stapled notarization ticket; it is not a distributable release. The installed window displayed the existing four observations, retained Accessibility permission, and showed Jev off with no key. The full native check ran 11 tests and built the Debug app; the Release build and installed signature were also verified. A live Jev request and classification quality were not tested.
 
 ### 0.1.1 preview verification
 
@@ -48,7 +60,7 @@ For a stable trial installation, build with your own signing identity and copy t
 
 The native prototype records a generated visit ID, an installation-specific device ID, normalized URL, title, start and last-seen timestamps, and cumulative estimated active seconds. The local store is in `~/Library/Application Support/com.jamatyka.AttentionLog/observations.sqlite`. It is not the existing collector database and is not a file in iCloud Drive.
 
-Capture requires an explicit per-installation opt-in, a URL permitted by the saved rules, Accessibility permission, an active Arc window, one unambiguous document in the accessibility tree, and recent input. URL rules run before the title is read or an observation is stored. Sensitive built-in domains, authentication-like routes and parameters, credentials, explicit ports, IP literals, and decoded `settings`, `login`, and `account` matches are rejected. This is a conservative subset of the original collector policy, not a complete detector of private pages or private browsing windows. No page text, selected text, screenshots, audio, or AI requests are involved.
+Capture requires an explicit per-installation opt-in, a URL permitted by the saved rules, Accessibility permission, an active Arc window, one unambiguous document in the accessibility tree, and recent input. URL rules run before the title is read or an observation is stored. Sensitive built-in domains, authentication-like routes and parameters, credentials, explicit ports, IP literals, and decoded `settings`, `login`, and `account` matches are rejected. This is a conservative subset of the original collector policy, not a complete detector of private pages or private browsing windows. Capture itself reads no page text, selected text, screenshots, or audio; optional Jev classification fetches public page text separately as described above.
 
 Two-second samples credit only intervals bracketed by the same eligible URL. A missing/ambiguous document, application switch, idle period of 60 seconds, sleep/display/session transition, or a sample gap over five seconds resets the interval. This intentionally undercounts transitions. Scroll, copy and selection measurements from the extension are not reproduced. Arc split views or an incomplete accessibility tree are skipped. Single-page Arc capture has been verified live; the remaining acceptance cases below still need testing.
 
