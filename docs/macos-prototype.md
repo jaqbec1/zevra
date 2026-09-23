@@ -12,7 +12,7 @@ Choose **Open** to open the original article or video in the default browser, or
 
 This view uses the native observation store. It does not import the older Bun collector history or a personal profile. Jev suggestions are a separate, optional native feature.
 
-## Jev suggestions (0.2.0 local build)
+## Jev suggestions (0.2.0)
 
 In **Settings → Jev suggestions**, save a TypeSafe API key to this Mac's Keychain, then explicitly enable classification. Saving the key alone does not enable it. Capture and Jev have separate switches. Removing the key turns Jev off; neither action deletes observations or human corrections. The key is not printed, placed in the repository, or synced with CloudKit.
 
@@ -22,7 +22,11 @@ The row labels the provider suggestion and shows **Needs review** below 0.6 conf
 
 ## Run locally
 
-### 0.2.0 local installation
+### 0.2.0 official release
+
+The universal Release app passed the 11 native tests, Swift formatting and a Debug build. The repository check also passed 44 Bun tests, type checking, formatting, extension build and a synthetic demo. The Developer ID signature was verified, Apple accepted notarization submission `8b9a093e-9af9-4f4f-9672-f6190d9a3f5e`, its ticket was stapled, and Gatekeeper reported `accepted` / `Notarized Developer ID` after the final ZIP was extracted. The archive contains Apple Silicon and Intel binaries. The signed app was installed at `/Applications/Zevra.app` after backing up 0.1.1 in `macos/build/release-0.2.0/backups/`; application-support data and preferences were left in place. On this Mac the installed window opened, retained the existing launch-at-login setting, showed Jev off with no saved key, and reported that Accessibility access was needed, as the previous app did. A live Jev request, Intel execution, and first launch on another Mac were not tested.
+
+### 0.2.0 development build verification
 
 The 0.2.0 local build was compiled for Apple Silicon and Intel, signed with the same Developer ID team and bundle ID as the installed 0.1.1 app, and installed at `/Applications/Zevra.app`. The notarized 0.1.1 app was preserved in `macos/build/backups/Zevra-0.1.1-notarized.zip` (and an unpacked copy in that directory). The new local build has a valid Developer ID signature but no stapled notarization ticket; it is not a distributable release. The installed window displayed the existing four observations, retained Accessibility permission, and showed Jev off with no key. The full native check ran 11 tests and built the Debug app; the Release build and installed signature were also verified. A live Jev request and classification quality were not tested.
 
