@@ -50,6 +50,8 @@ private struct ObservationsView: View {
   @ObservedObject var model: AppModel
   @State private var panel: Panel = .library
   @State private var pendingKey = ""
+  @State private var goalsDraft = ""
+  @State private var interestDraft = ""
 
   private var isSearching: Bool {
     !model.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -135,6 +137,7 @@ private struct ObservationsView: View {
     } message: {
       Text(model.notice ?? "")
     }
+    .onAppear { goalsDraft = model.personalProfile.goals }
   }
 
   private var library: some View {
@@ -223,6 +226,8 @@ private struct ObservationsView: View {
 
   private func materialRow(_ observation: Observation) -> some View {
     let classification = model.classifications[observation.url]
+    let personal = model.personalEvaluations[observation.url]
+    let personalIsCurrent = personal?.profileRevision == model.personalProfile.revision
     return HStack(alignment: .top, spacing: 14) {
       Image(systemName: "doc.text")
         .font(.system(size: 17))
@@ -244,7 +249,37 @@ private struct ObservationsView: View {
           Text(observation.deviceID == model.deviceID ? "This Mac" : "Another Mac")
           Text("·")
           Text(observation.lastSeenAt.formatted(date: .abbreviated, time: .shortened))
-          if let choice = classification?.displayedChoice {
+          if model.personalProfile.evaluationEnabled,
+            let rating = model.personalRating(for: observation)
+          {
+            Text("·")
+            Label(
+              rating == .worthwhile ? "You · Worth it" : "You · Not worth it",
+              systemImage: "checkmark.circle"
+            )
+            .foregroundStyle(.primary)
+          } else if model.personalProfile.evaluationEnabled, let evaluation = personal,
+            let worth = evaluation.worth, let interest = evaluation.interestFit,
+            let goal = evaluation.goalFit
+          {
+            Text("·")
+            Label(
+              "Worth now \(worth.formatted(.number.precision(.fractionLength(1))))/4",
+              systemImage: "sparkles"
+            )
+            .foregroundStyle(worth >= 3 ? .green : worth < 1.5 ? .orange : .secondary)
+            Text("Interest \(interest.formatted(.number.precision(.fractionLength(1))))/4")
+            Text("Goals \(goal.formatted(.number.precision(.fractionLength(1))))/4")
+            if evaluation.status == "Needs review" {
+              Text("Uncertain").foregroundStyle(.orange)
+            } else if evaluation.status != "Personal evaluation" {
+              Text(evaluation.status).foregroundStyle(.orange)
+            }
+            if !personalIsCurrent { Text("Older profile").foregroundStyle(.orange) }
+          } else if model.personalProfile.evaluationEnabled {
+            Text("·")
+            Text(personal?.status ?? "Personal evaluation pending")
+          } else if let choice = classification?.displayedChoice {
             Text("·")
             Label(
               "\(classification?.correction == nil ? "Jev" : "You") · \(choice.rawValue)",
@@ -294,21 +329,42 @@ private struct ObservationsView: View {
           .accessibilityLabel("Copy link to \(observation.title)")
           if !model.demo {
             Menu {
-              if let classification, classification.correction == nil,
+              if model.personalProfile.evaluationEnabled {
+                if let evaluation = personal {
+                  Text(evaluation.basis?.explanation ?? evaluation.status)
+                  if !personalIsCurrent { Text("Based on an older profile") }
+                  if let confidence = evaluation.confidence {
+                    Text("Model confidence \(Int(confidence * 100))%")
+                  }
+                  Divider()
+                }
+                Button("Worth my time") { model.rateObservation(observation, as: .worthwhile) }
+                Button("Not worth my time") {
+                  model.rateObservation(observation, as: .notWorthwhile)
+                }
+                if model.personalRating(for: observation) != nil {
+                  Button("Remove my rating") { model.clearPersonalRating(for: observation) }
+                }
+              } else if let classification, classification.correction == nil,
                 let confidence = classification.confidence
               {
                 Text("Jev · \(Int(confidence * 100))% confidence")
                 if confidence < 0.6 { Text("Needs review") }
                 Divider()
               }
-              ForEach(FollowUp.allCases) { choice in
-                Button(choice.rawValue) { model.correct(choice, for: observation) }
+              if !model.personalProfile.evaluationEnabled {
+                ForEach(FollowUp.allCases) { choice in
+                  Button(choice.rawValue) { model.correct(choice, for: observation) }
+                }
               }
             } label: {
               Image(systemName: "ellipsis")
             }
-            .help("Set a follow-up")
-            .accessibilityLabel("Set a follow-up for \(observation.title)")
+            .help(
+              model.personalProfile.evaluationEnabled
+                ? "Correct personal evaluation" : "Set a follow-up"
+            )
+            .accessibilityLabel("Correct evaluation for \(observation.title)")
           }
         }
         .buttonStyle(.borderless)
@@ -321,8 +377,16 @@ private struct ObservationsView: View {
       Button("Copy link") { model.copyLink(observation) }
       if !model.demo {
         Divider()
-        ForEach(FollowUp.allCases) { choice in
-          Button(choice.rawValue) { model.correct(choice, for: observation) }
+        if model.personalProfile.evaluationEnabled {
+          Button("Worth my time") { model.rateObservation(observation, as: .worthwhile) }
+          Button("Not worth my time") { model.rateObservation(observation, as: .notWorthwhile) }
+          if model.personalRating(for: observation) != nil {
+            Button("Remove my rating") { model.clearPersonalRating(for: observation) }
+          }
+        } else {
+          ForEach(FollowUp.allCases) { choice in
+            Button(choice.rawValue) { model.correct(choice, for: observation) }
+          }
         }
       }
     }
@@ -337,6 +401,139 @@ private struct ObservationsView: View {
             .font(.subheadline).foregroundStyle(.secondary)
         }
         .padding(.bottom, 2)
+
+        settingsCard(
+          title: "Personal evaluation",
+          symbol: "person.crop.circle",
+          subtitle: "Let Zevra judge whether a page is worth your time now."
+        ) {
+          Text(
+            "Import only a folder or export you select. Archive titles stay on this Mac unless you rate a title as an example. A saved or watched item is an interest clue, not a positive rating."
+          )
+          .font(.caption).foregroundStyle(.secondary)
+          HStack {
+            Button(model.importingArchive ? "Importing…" : "Choose archive…") {
+              let panel = NSOpenPanel()
+              panel.canChooseDirectories = true
+              panel.canChooseFiles = true
+              panel.allowsMultipleSelection = false
+              panel.prompt = "Import selected archive"
+              if panel.runModal() == .OK, let selection = panel.url {
+                model.importArchive(selection)
+              }
+            }
+            .disabled(model.demo || model.importingArchive)
+            Spacer()
+            Text("\(model.personalProfile.items.count) candidate materials")
+              .font(.caption).foregroundStyle(.secondary)
+          }
+          Text(
+            "Obsidian \(model.personalProfile.items.filter { $0.source == .obsidian }.count) · X \(model.personalProfile.items.filter { $0.source == .x }.count) · YouTube \(model.personalProfile.items.filter { $0.source == .youtube }.count)"
+          )
+          .font(.caption2).foregroundStyle(.secondary)
+          Divider()
+          Text("Interests to use").font(.subheadline.weight(.medium))
+          Text("Suggested words from titles are unverified. Add only topics that fit you.")
+            .font(.caption).foregroundStyle(.secondary)
+          ForEach(model.personalProfile.interests, id: \.self) { interest in
+            HStack {
+              Text(interest)
+              Spacer()
+              Button("Remove") { model.removeInterest(interest) }
+                .disabled(model.demo)
+            }
+          }
+          HStack {
+            TextField("Add an interest", text: $interestDraft)
+            Button("Add") {
+              model.addInterest(interestDraft)
+              interestDraft = ""
+            }
+            .disabled(
+              model.demo || interestDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+          }
+          ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+              ForEach(
+                model.personalProfile.suggestedTopics.filter {
+                  !model.personalProfile.interests.contains($0)
+                }, id: \.self
+              ) { topic in
+                Button("Use \(topic)") { model.addInterest(topic) }
+                  .disabled(model.demo)
+              }
+            }
+          }
+          Divider()
+          Text("Current goals").font(.subheadline.weight(.medium))
+          TextEditor(text: $goalsDraft)
+            .frame(minHeight: 76)
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+            .accessibilityLabel("Current goals for personal evaluation")
+          HStack {
+            Text("Write what matters now. Archived interests are not treated as current goals.")
+              .font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            Button("Save goals") { model.saveGoals(goalsDraft) }
+              .disabled(model.demo)
+          }
+          Divider()
+          Text("Calibrate with materials you know").font(.subheadline.weight(.medium))
+          Text(
+            "Rate at least two worthwhile and two not worthwhile examples. You can correct future pages from their menu."
+          )
+          .font(.caption).foregroundStyle(.secondary)
+          ForEach(model.personalProfile.calibrationCandidates) { item in
+            HStack(spacing: 8) {
+              Text(item.title).lineLimit(1).help(item.title)
+              Text(item.source.rawValue).font(.caption2).foregroundStyle(.secondary)
+              Spacer(minLength: 8)
+              Button("Worth it") { model.rate(item, as: .worthwhile) }
+              Button("Not worth it") { model.rate(item, as: .notWorthwhile) }
+            }
+            .controlSize(.small)
+          }
+          ForEach(
+            model.personalProfile.items.filter {
+              $0.source != .other && model.personalProfile.ratings[$0.id] != nil
+            }.prefix(10)
+          ) { item in
+            HStack(spacing: 8) {
+              Text(item.title).lineLimit(1).help(item.title)
+              Text(
+                model.personalProfile.ratings[item.id] == .worthwhile ? "Worth it" : "Not worth it"
+              )
+              .font(.caption).foregroundStyle(.secondary)
+              Spacer(minLength: 8)
+              Button("Change") {
+                model.rate(
+                  item,
+                  as: model.personalProfile.ratings[item.id] == .worthwhile
+                    ? .notWorthwhile : .worthwhile)
+              }
+              Button("Undo") { model.clearRating(item) }
+            }
+            .controlSize(.small)
+          }
+          Text(
+            "Rated: \(model.personalProfile.worthwhileExamples.count) worthwhile · \(model.personalProfile.notWorthwhileExamples.count) not worthwhile"
+          )
+          .font(.caption).foregroundStyle(.secondary)
+          Divider()
+          Toggle(
+            "Evaluate pages personally with Jev",
+            isOn: Binding(
+              get: { model.personalProfile.evaluationEnabled },
+              set: { model.setPersonalEvaluation($0) })
+          )
+          .disabled(
+            !model.personalProfile.evaluationEnabled
+              && (!model.personalProfile.readyForWorthJudgment || !model.jevEnabled))
+          Text(
+            "When enabled, Zevra sends a public page excerpt, your saved goals, up to 20 interests you selected and up to 8 examples of each rating to TypeSafe. Unrated archive titles and full notes stay on this Mac. The result is an estimate, not a measured probability of usefulness."
+          )
+          .font(.caption).foregroundStyle(.secondary)
+        }
 
         settingsCard(
           title: "Jev suggestions",

@@ -20,6 +20,16 @@ After an eligible HTTPS page accumulates 10 active seconds across saved visits, 
 
 The row labels the provider suggestion and shows **Needs review** below 0.6 confidence. The ellipsis menu lets the user choose **Read deeper**, **Keep as reference**, or **No obvious follow-up**; a human choice takes precedence permanently. Suggestions and corrections live in a separate local `classifications.json` file with owner-only permissions, outside the CloudKit observation schema. The file contains page URLs and judgments, not the API key. The native app does not read the Bun collector database or run a digest. Model quality and a live provider response have not yet been verified for this build.
 
+## Personal evaluation (0.3.0 development build)
+
+Folder import includes Markdown notes and structured files named for bookmarks or YouTube watch history. Other export files, including direct messages, are skipped. Selecting one file explicitly accepts any listed format.
+
+In **Settings → Personal evaluation**, choose a local folder or export to import candidate titles from Markdown, JSON, JavaScript, HTML or CSV. The app accepts Obsidian notes and locally supplied X/YouTube exports through the same picker. It reads only the chosen selection, keeps at most 2,000 titles, and does not copy note bodies into its profile. Imported titles indicate possible interest, not approval or reading completion. Review suggested topic words and add only interests that fit; selected interests can be removed or entered manually. Supply current goals separately and rate at least two worthwhile and two not-worthwhile examples. These ratings are the initial calibration; later visited pages can be rated from their row menu.
+
+Personal evaluation is a separate opt-in after Jev is enabled. When it is on, the app pauses the earlier generic Jev suggestion path. For each eligible Arc page with at least ten cumulative active seconds and a public excerpt, it asks Jev for separate 0–4 scores for worth now, topical interest fit and current-goal fit. The row shows these estimates and flags low model confidence. A choice answer identifies whether the score was compared mainly with goals, rated examples, both or neither; this is not a free-form model explanation. No score means no judgment when the page or profile lacks enough evidence.
+
+The profile and results are stored locally as `personal-profile.json` and `personal-evaluations.json` with owner-only file permissions. When the separate personal switch is on, a request to TypeSafe contains the public page title/domain/excerpt, current goals (up to 1,000 characters), up to 20 explicitly selected interests, and up to eight related positive and eight related negative example titles. Unrated archive titles stay local. Local title-word overlap selects the rated examples, so semantic synonyms may be missed. It does not send archive files, full notes, the full page URL or the full page body. Profile changes leave older scores visible with an **Older profile** label; a still-active or revisited page can be evaluated again. The feature has been tested with synthetic data and a local build, not a measured accuracy trial or a live TypeSafe request.
+
 ## Run locally
 
 ### 0.2.0 official release
