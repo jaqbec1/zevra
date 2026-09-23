@@ -3,6 +3,17 @@ import Foundation
 
 @MainActor
 public final class ObservationStore {
+  public enum ClassificationSnapshotKind: String {
+    case suggestion, correction
+  }
+
+  public struct ClassificationSnapshot {
+    public let pageURL: String
+    public let kind: ClassificationSnapshotKind
+    public let payload: Data
+    public let recordedAt: Date
+  }
+
   public let container: NSPersistentCloudKitContainer
 
   public init(url: URL?, cloudContainer: String? = nil) throws {
@@ -112,6 +123,40 @@ public final class ObservationStore {
     }
   }
 
+  public func saveClassificationSnapshot(
+    pageURL: String, kind: ClassificationSnapshotKind, payload: Data, recordedAt: Date
+  ) throws {
+    let context = container.viewContext
+    let object = NSEntityDescription.insertNewObject(
+      forEntityName: "ClassificationSnapshot", into: context)
+    object.setValue(UUID(), forKey: "id")
+    object.setValue(pageURL, forKey: "pageURL")
+    object.setValue(kind.rawValue, forKey: "kind")
+    object.setValue(payload, forKey: "payload")
+    object.setValue(recordedAt, forKey: "recordedAt")
+    do { try context.save() } catch {
+      context.rollback()
+      throw error
+    }
+  }
+
+  public func classificationSnapshots() throws -> [ClassificationSnapshot] {
+    let context = container.viewContext
+    context.refreshAllObjects()
+    let request = NSFetchRequest<NSManagedObject>(entityName: "ClassificationSnapshot")
+    request.sortDescriptors = [NSSortDescriptor(key: "recordedAt", ascending: true)]
+    return try context.fetch(request).compactMap { object in
+      guard let pageURL = object.value(forKey: "pageURL") as? String,
+        let rawKind = object.value(forKey: "kind") as? String,
+        let kind = ClassificationSnapshotKind(rawValue: rawKind),
+        let payload = object.value(forKey: "payload") as? Data,
+        let recordedAt = object.value(forKey: "recordedAt") as? Date
+      else { return nil }
+      return ClassificationSnapshot(
+        pageURL: pageURL, kind: kind, payload: payload, recordedAt: recordedAt)
+    }
+  }
+
   public func close() throws {
     container.viewContext.reset()
     for store in container.persistentStoreCoordinator.persistentStores {
@@ -137,7 +182,23 @@ public final class ObservationStore {
       attribute.isOptional = true  // CloudKit schema requirement; validated when decoding.
       return attribute
     }
-    model.entities = [entity]
+    let snapshot = NSEntityDescription()
+    snapshot.name = "ClassificationSnapshot"
+    snapshot.managedObjectClassName = "NSManagedObject"
+    snapshot.properties = [
+      ("id", NSAttributeType.UUIDAttributeType),
+      ("pageURL", .stringAttributeType),
+      ("kind", .stringAttributeType),
+      ("payload", .binaryDataAttributeType),
+      ("recordedAt", .dateAttributeType),
+    ].map { name, type in
+      let attribute = NSAttributeDescription()
+      attribute.name = name
+      attribute.attributeType = type
+      attribute.isOptional = true
+      return attribute
+    }
+    model.entities = [entity, snapshot]
     return model
   }
 }
