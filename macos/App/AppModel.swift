@@ -26,10 +26,16 @@ final class AppModel: ObservableObject {
   @Published var allowedDomains = ""
   @Published var excludedDomains = ""
   @Published var notice: String?
+  @Published private(set) var jevEnabled = false
+  @Published private(set) var hasJevKey = false
+  @Published private(set) var classifications: [String: ClassificationRecord] = [:]
 
   let demo: Bool
   let deviceID: String
   private var store: ObservationStore?
+  private var classificationStore: ClassificationStore?
+  private var classificationTasks: [String: Task<Void, Never>] = [:]
+  private var classificationTaskIDs: [String: UUID] = [:]
   private var tracker: AttentionTracker
   private var polling: Task<Void, Never>?
   private var subscriptions: [NSObjectProtocol] = []
@@ -70,6 +76,14 @@ final class AppModel: ObservableObject {
         )
         .appendingPathComponent("com.jamatyka.AttentionLog/observations.sqlite")
       store = try ObservationStore(url: url, cloudContainer: cloudContainer)
+      let classificationURL = url?.deletingLastPathComponent().appendingPathComponent(
+        "classifications.json")
+      do {
+        classificationStore = try ClassificationStore(url: classificationURL)
+        classifications = classificationStore?.records ?? [:]
+      } catch {
+        notice = "Saved suggestions could not be read. Jev is paused until this is resolved."
+      }
       if demo { try loadDemo() }
       refresh()
     } catch {
@@ -82,6 +96,8 @@ final class AppModel: ObservableObject {
       return
     }
     subscribe()
+    hasJevKey = JevCredential.load() != nil
+    jevEnabled = defaults.bool(forKey: "jevEnabled") && classificationStore != nil && hasJevKey
     refreshPermissions()
     if cloudContainer != nil {
       syncStatus = "iCloud configured · waiting for sync"
@@ -116,6 +132,9 @@ final class AppModel: ObservableObject {
       enabled: capturing, allowedDomains: CapturePolicy.domains(from: allowedDomains),
       excludedDomains: CapturePolicy.domains(from: excludedDomains))
     tracker.reset()
+    for task in classificationTasks.values { task.cancel() }
+    classificationTasks.removeAll()
+    classificationTaskIDs.removeAll()
     refresh()
     notice = "Rules saved on this Mac. Existing records are retained; excluded pages are hidden."
   }
@@ -131,7 +150,71 @@ final class AppModel: ObservableObject {
     policy = CapturePolicy(
       enabled: enabled, allowedDomains: savedAllowed, excludedDomains: savedExcluded)
     tracker.reset()
+    if !enabled {
+      for task in classificationTasks.values { task.cancel() }
+      classificationTasks.removeAll()
+      classificationTaskIDs.removeAll()
+    }
     status = enabled ? "Waiting for an eligible Arc page" : "Capture is paused"
+  }
+
+  func setJevEnabled(_ enabled: Bool) {
+    guard !demo else { return }
+    if enabled && (classificationStore == nil || !hasJevKey) {
+      notice = "Add your TypeSafe API key before enabling Jev."
+      return
+    }
+    jevEnabled = enabled
+    defaults.set(enabled, forKey: "jevEnabled")
+    if !enabled {
+      for task in classificationTasks.values { task.cancel() }
+      classificationTasks.removeAll()
+      classificationTaskIDs.removeAll()
+    }
+  }
+
+  func saveJevKey(_ value: String) {
+    guard !demo else { return }
+    let key = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !key.isEmpty else {
+      notice = "Enter a TypeSafe API key."
+      return
+    }
+    if JevCredential.save(key) {
+      for task in classificationTasks.values { task.cancel() }
+      classificationTasks.removeAll()
+      classificationTaskIDs.removeAll()
+      hasJevKey = true
+      notice =
+        jevEnabled
+        ? "TypeSafe key updated in this Mac's Keychain."
+        : "TypeSafe key saved in this Mac's Keychain. Jev is still off until enabled."
+    } else {
+      notice = "The key could not be saved in Keychain. Jev remains unavailable."
+    }
+  }
+
+  func removeJevKey() {
+    setJevEnabled(false)
+    JevCredential.remove()
+    hasJevKey = false
+  }
+
+  func correct(_ choice: FollowUp, for observation: Observation) {
+    guard !demo, let classificationStore else { return }
+    let pageURL = observation.url
+    var record =
+      classifications[pageURL]
+      ?? ClassificationRecord(
+        title: observation.title, fingerprint: nil, suggestion: nil, confidence: nil,
+        correction: nil, status: "Your choice", checkedAt: Date(), attemptCount: 0)
+    record.correction = choice
+    do {
+      try classificationStore.update(record, for: pageURL)
+      classifications = classificationStore.records
+    } catch {
+      notice = "Could not save your correction. Please try again."
+    }
   }
 
   func requestAccessibility() {
@@ -240,11 +323,107 @@ final class AppModel: ObservableObject {
         do {
           try store?.save(observation)
           refresh()
+          maybeClassify(observation)
         } catch {
           setCapture(false)
           storageFailed = true
           status = "Storage error · capture stopped"
           notice = "Could not save an observation. Capture is paused to avoid silently losing data."
+        }
+      }
+    }
+  }
+
+  private func maybeClassify(_ observation: Observation) {
+    guard jevEnabled, let classificationStore,
+      policy.acceptedURL(observation.url) == observation.url,
+      classificationTasks[observation.url] == nil,
+      (try? store?.activeSeconds(for: observation.url)) ?? 0 >= 10
+    else { return }
+    let pageURL = observation.url
+    let previous = classificationStore.record(for: pageURL)
+    if let previous {
+      if previous.correction != nil { return }
+      if previous.suggestion != nil && previous.title == observation.title
+        && Date().timeIntervalSince(previous.checkedAt) < 3600
+      {
+        return
+      }
+      if previous.suggestion == nil && previous.title == observation.title
+        && (previous.attemptCount >= 3 || Date().timeIntervalSince(previous.checkedAt) < 300)
+      {
+        return
+      }
+    }
+    guard let key = JevCredential.load() else {
+      hasJevKey = false
+      setJevEnabled(false)
+      return
+    }
+    let title = observation.title
+    let currentPolicy = policy
+    let taskID = UUID()
+    classificationTaskIDs[pageURL] = taskID
+    classificationTasks[pageURL] = Task { [weak self] in
+      defer {
+        if self?.classificationTaskIDs[pageURL] == taskID {
+          self?.classificationTasks[pageURL] = nil
+          self?.classificationTaskIDs[pageURL] = nil
+        }
+      }
+      do {
+        let evidence = try await JevService.evidence(
+          pageURL: pageURL, title: title, policy: currentPolicy)
+        guard !Task.isCancelled, let self, self.jevEnabled,
+          self.policy.acceptedURL(pageURL) == pageURL,
+          classificationStore.record(for: pageURL)?.correction == nil
+        else { return }
+        if previous?.fingerprint == evidence.fingerprint {
+          if var unchanged = classificationStore.record(for: pageURL) {
+            unchanged.checkedAt = Date()
+            if unchanged.suggestion != nil {
+              unchanged.status =
+                (unchanged.confidence ?? 0) < 0.6
+                ? "Needs review" : "Jev suggestion"
+            }
+            try classificationStore.update(unchanged, for: pageURL)
+            self.classifications = classificationStore.records
+          }
+          return
+        }
+        let (suggestion, confidence) = try await JevService.classify(evidence, key: key)
+        guard !Task.isCancelled, self.jevEnabled,
+          self.policy.acceptedURL(pageURL) == pageURL
+        else { return }
+        let correction = classificationStore.record(for: pageURL)?.correction
+        let result = ClassificationRecord(
+          title: title, fingerprint: evidence.fingerprint, suggestion: suggestion,
+          confidence: confidence, correction: correction,
+          status: confidence < 0.6 ? "Needs review" : "Jev suggestion",
+          checkedAt: Date(), attemptCount: 0)
+        try classificationStore.update(result, for: pageURL)
+        self.classifications = classificationStore.records
+      } catch {
+        guard !Task.isCancelled, let self, self.jevEnabled,
+          self.policy.acceptedURL(pageURL) == pageURL
+        else { return }
+        let existing = classificationStore.record(for: pageURL)
+        let status: String
+        if case JevService.Failure.noPublicExcerpt = error {
+          status = "No public excerpt"
+        } else {
+          status = "Jev unavailable"
+        }
+        let result = ClassificationRecord(
+          title: title, fingerprint: existing?.fingerprint,
+          suggestion: existing?.suggestion, confidence: existing?.confidence,
+          correction: existing?.correction, status: status, checkedAt: Date(),
+          attemptCount: (existing?.title == title ? existing?.attemptCount ?? 0 : 0) + 1)
+        do {
+          try classificationStore.update(result, for: pageURL)
+          self.classifications = classificationStore.records
+        } catch {
+          self.notice = "Could not save a Jev result. Saved visits are unaffected."
         }
       }
     }
@@ -337,6 +516,17 @@ final class AppModel: ObservableObject {
           startedAt: Date().addingTimeInterval(-Double(index + 1) * 600),
           lastSeenAt: Date().addingTimeInterval(-Double(index) * 600), activeSeconds: example.2))
     }
+    try classificationStore?.update(
+      ClassificationRecord(
+        title: examples[0].0, fingerprint: "demo", suggestion: .read, confidence: 0.82,
+        correction: nil, status: "Jev suggestion", checkedAt: Date(), attemptCount: 0),
+      for: examples[0].1)
+    try classificationStore?.update(
+      ClassificationRecord(
+        title: examples[1].0, fingerprint: "demo", suggestion: .keep, confidence: 0.51,
+        correction: nil, status: "Needs review", checkedAt: Date(), attemptCount: 0),
+      for: examples[1].1)
+    classifications = classificationStore?.records ?? [:]
     status = "Demo · capture is disabled"
   }
 }

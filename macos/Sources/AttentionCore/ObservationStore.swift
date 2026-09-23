@@ -103,6 +103,15 @@ public final class ObservationStore {
     return observations
   }
 
+  public func activeSeconds(for url: String) throws -> Double {
+    let request = NSFetchRequest<NSManagedObject>(entityName: "Observation")
+    request.predicate = NSPredicate(format: "url == %@", url)
+    request.propertiesToFetch = ["activeSeconds"]
+    return try container.viewContext.fetch(request).reduce(0) {
+      $0 + ($1.value(forKey: "activeSeconds") as? Double ?? 0)
+    }
+  }
+
   public func close() throws {
     container.viewContext.reset()
     for store in container.persistentStoreCoordinator.persistentStores {
