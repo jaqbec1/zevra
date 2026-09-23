@@ -5,6 +5,7 @@ public enum ArchiveSource: String, Codable, Sendable, CaseIterable {
   case obsidian = "Obsidian"
   case x = "X"
   case youtube = "YouTube"
+  case books = "Books"
   case other = "Other"
 }
 
@@ -140,6 +141,9 @@ public enum ArchiveImporter {
     guard manager.fileExists(atPath: selection.path, isDirectory: &isDirectory) else {
       throw ImportError.unsupportedSelection
     }
+    if !isDirectory.boolValue && selection.pathExtension.lowercased() == "base" {
+      return try readObsidianBase(selection, limit: limit)
+    }
     let files: [URL]
     if isDirectory.boolValue {
       guard
@@ -177,7 +181,7 @@ public enum ArchiveImporter {
         fallback: file.deletingPathExtension().lastPathComponent)
       {
         let item = ArchiveItem(title: title, source: source)
-        guard item.title.count >= 5, seen.insert(item.id).inserted else { continue }
+        guard item.title.count >= 4, seen.insert(item.id).inserted else { continue }
         items.append(item)
         if items.count >= limit { break }
       }
@@ -189,16 +193,87 @@ public enum ArchiveImporter {
     ["md", "markdown", "json", "js", "html", "htm", "csv"].contains(url.pathExtension.lowercased())
   }
 
+  private static func readObsidianBase(_ base: URL, limit: Int) throws -> [ArchiveItem] {
+    let text = try String(contentsOf: base, encoding: .utf8)
+    guard text.contains("name: All") else { throw ImportError.unsupportedSelection }
+    let pattern = #"categories\.contains\(link\("([^"]+)"\)\)"#
+    let regex = try NSRegularExpression(pattern: pattern)
+    let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+    let categories = Set(
+      matches.compactMap { match -> String? in
+        guard let range = Range(match.range(at: 1), in: text) else { return nil }
+        return String(text[range])
+      })
+    guard categories.count == 1, let category = categories.first else {
+      throw ImportError.unsupportedSelection
+    }
+    let vault = base.resolvingSymlinksInPath().deletingLastPathComponent()
+      .deletingLastPathComponent()
+    guard
+      let iterator = FileManager.default.enumerator(
+        at: vault, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+        options: [.skipsHiddenFiles, .skipsPackageDescendants])
+    else { throw ImportError.unsupportedSelection }
+    var files: [URL] = []
+    for case let url as URL in iterator {
+      let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+      guard values.isRegularFile == true, values.isSymbolicLink != true,
+        ["md", "markdown"].contains(url.pathExtension.lowercased())
+      else { continue }
+      if files.count >= 5_000 { throw ImportError.tooManyFiles }
+      files.append(url)
+    }
+    var items: [ArchiveItem] = []
+    var seen = Set<String>()
+    for file in files.sorted(by: { $0.path < $1.path }) {
+      if items.count >= limit { break }
+      let handle = try FileHandle(forReadingFrom: file)
+      let prefix = try handle.read(upToCount: 16_384) ?? Data()
+      try handle.close()
+      let lines = String(decoding: prefix, as: UTF8.self).components(separatedBy: .newlines)
+      guard lines.first == "---", let end = lines.dropFirst().firstIndex(of: "---") else {
+        continue
+      }
+      let frontmatter = Array(lines[1..<end])
+      guard frontmatterCategories(frontmatter).contains("[[\(category)]]") else { continue }
+      let title =
+        frontmatter.first { $0.hasPrefix("title:") }
+        .map { String($0.dropFirst(6)).trimmingCharacters(in: CharacterSet(charactersIn: " \"'")) }
+        .flatMap { $0.isEmpty ? nil : $0 } ?? file.deletingPathExtension().lastPathComponent
+      let item = ArchiveItem(title: title, source: .obsidian)
+      if item.title.count >= 4, seen.insert(item.id).inserted { items.append(item) }
+    }
+    return items
+  }
+
+  private static func frontmatterCategories(_ lines: [String]) -> String {
+    var value = ""
+    var capturing = false
+    for line in lines {
+      if line.hasPrefix("categories:") {
+        value = String(line.dropFirst("categories:".count))
+        capturing = true
+      } else if capturing {
+        guard line.hasPrefix(" ") || line.hasPrefix("\t") else { break }
+        value += " " + line
+      }
+    }
+    return value
+  }
+
   private static func supportedInFolder(_ url: URL) -> Bool {
     guard supported(url) else { return false }
     if ["md", "markdown"].contains(url.pathExtension.lowercased()) { return true }
     let name = url.lastPathComponent.lowercased()
-    return ["bookmark", "youtube", "watch-history"].contains { name.contains($0) }
+    return ["bookmark", "youtube", "watch-history", "books-reading-list"].contains {
+      name.contains($0)
+    }
   }
 
   private static func sourceFor(_ url: URL) -> ArchiveSource {
     let path = url.path.lowercased()
     if ["md", "markdown"].contains(url.pathExtension.lowercased()) { return .obsidian }
+    if path.contains("books-reading-list") { return .books }
     if path.contains("youtube") || path.contains("watch-history") { return .youtube }
     if path.contains("twitter") || path.contains("tweet") || path.contains("bookmarks")
       || path.contains("/x/")

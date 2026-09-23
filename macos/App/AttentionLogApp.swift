@@ -408,7 +408,7 @@ private struct ObservationsView: View {
           subtitle: "Let Zevra judge whether a page is worth your time now."
         ) {
           Text(
-            "Import only a folder or export you select. Archive titles stay on this Mac unless you rate a title as an example. A saved or watched item is an interest clue, not a positive rating."
+            "Choose an Obsidian Base, a folder or an export. A Base imports only matching note titles. Titles stay on this Mac unless you rate one as an example. Saved or watched does not mean worthwhile."
           )
           .font(.caption).foregroundStyle(.secondary)
           HStack {
@@ -428,7 +428,7 @@ private struct ObservationsView: View {
               .font(.caption).foregroundStyle(.secondary)
           }
           Text(
-            "Obsidian \(model.personalProfile.items.filter { $0.source == .obsidian }.count) · X \(model.personalProfile.items.filter { $0.source == .x }.count) · YouTube \(model.personalProfile.items.filter { $0.source == .youtube }.count)"
+            "Obsidian \(model.personalProfile.items.filter { $0.source == .obsidian }.count) · X \(model.personalProfile.items.filter { $0.source == .x }.count) · YouTube \(model.personalProfile.items.filter { $0.source == .youtube }.count) · Books \(model.personalProfile.items.filter { $0.source == .books }.count)"
           )
           .font(.caption2).foregroundStyle(.secondary)
           Divider()

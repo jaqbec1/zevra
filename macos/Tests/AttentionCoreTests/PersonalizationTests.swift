@@ -66,6 +66,36 @@ import Testing
   #expect(imported.map(\.title) == ["Good article"])
 }
 
+@Test func obsidianBaseImportsOnlyMatchingFrontmatter() throws {
+  let vault = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  let bases = vault.appendingPathComponent("Bases")
+  try FileManager.default.createDirectory(at: bases, withIntermediateDirectories: true)
+  defer { try? FileManager.default.removeItem(at: vault) }
+  let base = bases.appendingPathComponent("Consumables.base")
+  try "views:\n  - name: All\n    filters:\n      - categories.contains(link(\"Clippings\"))"
+    .write(to: base, atomically: true, encoding: .utf8)
+  try
+    "---\ntitle: Useful compiler guide\ncategories: [\"[[Clippings]]\"]\nstatus: Consumed\n---\nBody"
+    .write(to: vault.appendingPathComponent("included.md"), atomically: true, encoding: .utf8)
+  try "---\ncategories:\n  - \"[[Other]]\"\n---\n[[Clippings]] in body"
+    .write(to: vault.appendingPathComponent("excluded.md"), atomically: true, encoding: .utf8)
+  let imported = try ArchiveImporter.read(selection: base)
+  #expect(imported.map(\.title) == ["Useful compiler guide"])
+  #expect(PersonalProfile(items: imported).ratings.isEmpty)
+}
+
+@Test func selectedBooksListRemainsUnrated() throws {
+  let file = FileManager.default.temporaryDirectory.appendingPathComponent(
+    "books-reading-list-\(UUID().uuidString).json")
+  defer { try? FileManager.default.removeItem(at: file) }
+  try #"[{"title":"A thoughtful engineering book"}]"#.write(
+    to: file, atomically: true, encoding: .utf8)
+  let imported = try ArchiveImporter.read(selection: file)
+  #expect(imported.count == 1)
+  #expect(imported[0].source == .books)
+  #expect(PersonalProfile(items: imported).ratings.isEmpty)
+}
+
 @Test func pageRelatedExamplesAreChosenAcrossWholeArchive() {
   let unrelated = (0..<40).map {
     ArchiveItem(title: "Cooking technique number \($0)", source: .youtube)

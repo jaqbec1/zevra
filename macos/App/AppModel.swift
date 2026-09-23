@@ -292,7 +292,7 @@ final class AppModel: ObservableObject {
           "Imported \(imported.count) candidate materials locally. Saved or watched does not mean worthwhile."
       } catch {
         notice =
-          "Could not read that archive. Choose a folder or a Markdown, JSON, JS, HTML or CSV export."
+          "Could not read that selection. Choose an Obsidian Base, folder or Markdown, JSON, JS, HTML or CSV export."
       }
       importingArchive = false
     }
