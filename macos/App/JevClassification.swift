@@ -56,11 +56,15 @@ final class ClassificationStore {
   }
 }
 
-enum JevCredential {
-  private static let service = "com.jamatyka.AttentionLog.jev"
-  private static let account = "typesafe-api-key"
+struct APIKeyCredential {
+  static let jev = APIKeyCredential(
+    service: "com.jamatyka.AttentionLog.jev", account: "typesafe-api-key")
+  static let openAI = APIKeyCredential(
+    service: "com.jamatyka.AttentionLog.openai-import", account: "openai-api-key")
+  private let service: String
+  private let account: String
 
-  static func load() -> String? {
+  func load() -> String? {
     let query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: service,
@@ -75,7 +79,7 @@ enum JevCredential {
     return String(data: data, encoding: .utf8)
   }
 
-  static func save(_ key: String) -> Bool {
+  func save(_ key: String) -> Bool {
     let identity: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: service,
@@ -93,23 +97,13 @@ enum JevCredential {
     return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
   }
 
-  static func remove() {
+  func remove() {
     let query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: service,
       kSecAttrAccount as String: account,
     ]
     SecItemDelete(query as CFDictionary)
-  }
-}
-
-private final class NoRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-  func urlSession(
-    _ session: URLSession, task: URLSessionTask,
-    willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
-    completionHandler: @escaping (URLRequest?) -> Void
-  ) {
-    completionHandler(nil)
   }
 }
 

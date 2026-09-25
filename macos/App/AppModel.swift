@@ -29,13 +29,26 @@ final class AppModel: ObservableObject {
   @Published private(set) var jevEnabled = false
   @Published private(set) var hasJevKey = false
   @Published private(set) var classifications: [String: ClassificationRecord] = [:]
+  @Published private(set) var personalProfile = PersonalProfile()
+  @Published private(set) var personalEvaluations: [String: PersonalEvaluation] = [:]
+  @Published private(set) var importingArchive = false
+
+  @Published var importDraft: ImportDraft?
+  @Published private(set) var analyzingImport = false
+  @Published private(set) var hasOpenAIKey = false
+  @Published var importError: String?
+  private var importAnalysis: Task<Void, Never>?
 
   let demo: Bool
   let deviceID: String
   private var store: ObservationStore?
   private var classificationStore: ClassificationStore?
+  private var personalProfileStore: PersonalProfileStore?
+  private var personalEvaluationStore: PersonalEvaluationStore?
   private var classificationTasks: [String: Task<Void, Never>] = [:]
   private var classificationTaskIDs: [String: UUID] = [:]
+  private var personalTasks: [String: Task<Void, Never>] = [:]
+  private var personalTaskIDs: [String: UUID] = [:]
   private var tracker: AttentionTracker
   private var polling: Task<Void, Never>?
   private var subscriptions: [NSObjectProtocol] = []
@@ -84,6 +97,17 @@ final class AppModel: ObservableObject {
       } catch {
         notice = "Saved suggestions could not be read. Jev is paused until this is resolved."
       }
+      do {
+        let base = url?.deletingLastPathComponent()
+        personalProfileStore = try PersonalProfileStore(
+          url: base?.appendingPathComponent("personal-profile.json"))
+        personalEvaluationStore = try PersonalEvaluationStore(
+          url: base?.appendingPathComponent("personal-evaluations.json"))
+        personalProfile = personalProfileStore?.profile ?? PersonalProfile()
+        personalEvaluations = personalEvaluationStore?.records ?? [:]
+      } catch {
+        notice = "Personal profile could not be read. Personal evaluation is paused."
+      }
       if demo { try loadDemo() }
       refresh()
     } catch {
@@ -96,7 +120,8 @@ final class AppModel: ObservableObject {
       return
     }
     subscribe()
-    hasJevKey = JevCredential.load() != nil
+    hasJevKey = APIKeyCredential.jev.load() != nil
+    hasOpenAIKey = APIKeyCredential.openAI.load() != nil
     jevEnabled = defaults.bool(forKey: "jevEnabled") && classificationStore != nil && hasJevKey
     refreshPermissions()
     if cloudContainer != nil {
@@ -135,6 +160,9 @@ final class AppModel: ObservableObject {
     for task in classificationTasks.values { task.cancel() }
     classificationTasks.removeAll()
     classificationTaskIDs.removeAll()
+    for task in personalTasks.values { task.cancel() }
+    personalTasks.removeAll()
+    personalTaskIDs.removeAll()
     refresh()
     notice = "Rules saved on this Mac. Existing records are retained; excluded pages are hidden."
   }
@@ -154,6 +182,9 @@ final class AppModel: ObservableObject {
       for task in classificationTasks.values { task.cancel() }
       classificationTasks.removeAll()
       classificationTaskIDs.removeAll()
+      for task in personalTasks.values { task.cancel() }
+      personalTasks.removeAll()
+      personalTaskIDs.removeAll()
     }
     status = enabled ? "Waiting for an eligible Arc page" : "Capture is paused"
   }
@@ -170,6 +201,243 @@ final class AppModel: ObservableObject {
       for task in classificationTasks.values { task.cancel() }
       classificationTasks.removeAll()
       classificationTaskIDs.removeAll()
+      for task in personalTasks.values { task.cancel() }
+      personalTasks.removeAll()
+      personalTaskIDs.removeAll()
+      if personalProfile.evaluationEnabled { setPersonalEvaluation(false) }
+    }
+  }
+
+  func saveGoals(_ text: String) {
+    guard !demo, let personalProfileStore else { return }
+    var updated = personalProfile
+    updated.goals = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1_000))
+    updateProfile(updated, using: personalProfileStore)
+  }
+
+  func rate(_ item: ArchiveItem, as rating: MaterialRating) {
+    guard !demo, let personalProfileStore else { return }
+    var updated = personalProfile
+    updated.ratings[item.id] = rating
+    updateProfile(updated, using: personalProfileStore)
+  }
+
+  func clearRating(_ item: ArchiveItem) {
+    guard !demo, let personalProfileStore else { return }
+    var updated = personalProfile
+    updated.ratings[item.id] = nil
+    updateProfile(updated, using: personalProfileStore)
+  }
+
+  func addInterest(_ interest: String) {
+    guard !demo, let personalProfileStore else { return }
+    var updated = personalProfile
+    let cleaned = String(interest.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
+    guard !cleaned.isEmpty, updated.interests.count < 20,
+      !updated.interests.contains(where: { $0.caseInsensitiveCompare(cleaned) == .orderedSame })
+    else { return }
+    updated.interests.append(cleaned)
+    updateProfile(updated, using: personalProfileStore)
+  }
+
+  func removeInterest(_ interest: String) {
+    guard !demo, let personalProfileStore else { return }
+    var updated = personalProfile
+    updated.interests.removeAll { $0 == interest }
+    updateProfile(updated, using: personalProfileStore)
+  }
+
+  func removeArchiveItem(_ item: ArchiveItem) {
+    guard !demo, let personalProfileStore else { return }
+    var updated = personalProfile
+    updated.items.removeAll { $0.id == item.id }
+    updated.ratings[item.id] = nil
+    updateProfile(updated, using: personalProfileStore)
+  }
+
+  func rateObservation(_ observation: Observation, as rating: MaterialRating) {
+    guard !demo, let personalProfileStore,
+      viewingPolicy.acceptedURL(observation.url) == observation.url
+    else { return }
+    let item = ArchiveItem(title: observation.title, source: .other, identity: observation.url)
+    var updated = personalProfile
+    if !updated.items.contains(where: { $0.id == item.id }) { updated.items.append(item) }
+    updated.ratings[item.id] = rating
+    updated.pageRatings[observation.url] = rating
+    updateProfile(updated, using: personalProfileStore)
+  }
+
+  func personalRating(for observation: Observation) -> MaterialRating? {
+    personalProfile.pageRatings[observation.url]
+  }
+
+  func clearPersonalRating(for observation: Observation) {
+    guard !demo, let personalProfileStore else { return }
+    var updated = personalProfile
+    updated.pageRatings[observation.url] = nil
+    let item = ArchiveItem(title: observation.title, source: .other, identity: observation.url)
+    updated.ratings[item.id] = nil
+    updateProfile(updated, using: personalProfileStore)
+  }
+
+  func importArchive(_ selection: URL, base: URL? = nil, viewName: String? = nil) {
+    guard !demo, !importingArchive, personalProfileStore != nil else { return }
+    importingArchive = true
+    Task {
+      defer { importingArchive = false }
+      do {
+        let imported = try await Task.detached(priority: .userInitiated) {
+          let scoped = selection.startAccessingSecurityScopedResource()
+          let baseScoped = base?.startAccessingSecurityScopedResource() == true
+          defer {
+            if scoped { selection.stopAccessingSecurityScopedResource() }
+            if baseScoped { base?.stopAccessingSecurityScopedResource() }
+          }
+          return try ArchiveImporter.read(selection: selection, base: base, viewName: viewName)
+        }.value
+        guard !imported.isEmpty else {
+          notice = "No candidate materials found in this source."
+          return
+        }
+        importError = nil
+        importDraft = ImportDraft(candidates: imported)
+      } catch let error as ArchiveImporter.ImportError {
+        notice = error.localizedDescription
+      } catch {
+        notice =
+          "Could not read the selected archive or Base. Check file access and try again. Nothing was imported."
+      }
+    }
+  }
+
+  func saveOpenAIKey(_ value: String) {
+    guard !demo else { return }
+    let key = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !key.isEmpty, !key.contains("\n"), !key.contains("\r") else {
+      importError = "Enter a valid OpenAI API key."
+      return
+    }
+    if APIKeyCredential.openAI.save(key) {
+      hasOpenAIKey = true
+      importError = nil
+    } else {
+      importError = "Could not save the OpenAI key in this Mac's Keychain."
+    }
+  }
+
+  func removeOpenAIKey() {
+    guard !demo else { return }
+    importAnalysis?.cancel()
+    importAnalysis = nil
+    analyzingImport = false
+    APIKeyCredential.openAI.remove()
+    hasOpenAIKey = APIKeyCredential.openAI.load() != nil
+    if hasOpenAIKey { importError = "Could not remove the OpenAI key. Try again." }
+  }
+
+  func analyzeImport() {
+    guard !demo, !analyzingImport, let draft = importDraft else { return }
+    guard let key = APIKeyCredential.openAI.load() else {
+      importError = ModelImport.Failure.missingKey.localizedDescription
+      return
+    }
+    do {
+      let candidates = try draft.selectedMaterials(policy: viewingPolicy)
+      importError = nil
+      analyzingImport = true
+      importAnalysis = Task {
+        do {
+          let result = try await ModelImport.analyze(candidates: candidates, apiKey: key)
+          guard !Task.isCancelled, importDraft?.id == draft.id else { return }
+          var reviewed = draft
+          let analyzed = Dictionary(uniqueKeysWithValues: result.materials.map { ($0.id, $0) })
+          reviewed.materials = draft.materials.map { analyzed[$0.id] ?? $0 }
+          reviewed.interests = result.interests
+          reviewed.intentions = result.intentions
+          reviewed.modelGenerated = true
+          importDraft = reviewed
+        } catch {
+          guard !Task.isCancelled, importDraft?.id == draft.id else { return }
+          importError = error.localizedDescription
+        }
+        analyzingImport = false
+        importAnalysis = nil
+      }
+    } catch { importError = error.localizedDescription }
+  }
+
+  func cancelImport() {
+    importAnalysis?.cancel()
+    importAnalysis = nil
+    analyzingImport = false
+    importDraft = nil
+    importError = nil
+  }
+
+  func saveReviewedImport() {
+    guard !analyzingImport, let draft = importDraft, let personalProfileStore else { return }
+    do {
+      let updated = try draft.applying(to: personalProfile, policy: viewingPolicy)
+      guard updated.revision != personalProfile.revision else {
+        cancelImport()
+        return
+      }
+      if updateProfile(updated, using: personalProfileStore) {
+        cancelImport()
+        notice =
+          demo
+          ? "Demo: approved results saved in memory only."
+          : "Approved materials and profile changes saved on this Mac."
+      } else {
+        importError = "Could not save the profile. Your draft is still available; try again."
+        notice = nil
+      }
+    } catch { importError = error.localizedDescription }
+  }
+
+  func previewImportDemo() {
+    guard demo else { return }
+    var draft = ImportDraft(candidates: [
+      ArchiveItem(title: "A practical guide to compiler design", source: .obsidian),
+      ArchiveItem(title: "Building a local-first reading archive", source: .youtube),
+    ])
+    draft.materials[0].topic = "Compilers"
+    draft.materials[0].link = "https://example.com/compilers"
+    draft.interests = [
+      ImportSuggestion(text: "Compiler design", sourceIDs: [draft.materials[0].id])
+    ]
+    draft.intentions = [
+      ImportSuggestion(text: "Learn how parsers work", sourceIDs: [draft.materials[0].id])
+    ]
+    draft.modelGenerated = true
+    importDraft = draft
+  }
+
+  func setPersonalEvaluation(_ enabled: Bool) {
+    guard !demo, let personalProfileStore else { return }
+    guard !enabled || (jevEnabled && hasJevKey && personalProfile.readyForWorthJudgment) else {
+      notice =
+        "Add current goals and rate at least two worthwhile and two not worthwhile examples first."
+      return
+    }
+    var updated = personalProfile
+    updated.evaluationEnabled = enabled
+    updateProfile(updated, using: personalProfileStore)
+  }
+
+  @discardableResult
+  private func updateProfile(_ updated: PersonalProfile, using store: PersonalProfileStore) -> Bool
+  {
+    do {
+      try store.update(updated)
+      personalProfile = updated
+      for task in personalTasks.values { task.cancel() }
+      personalTasks.removeAll()
+      personalTaskIDs.removeAll()
+      return true
+    } catch {
+      notice = "Could not save the personal profile. Previous data is unchanged."
+      return false
     }
   }
 
@@ -180,7 +448,7 @@ final class AppModel: ObservableObject {
       notice = "Enter a TypeSafe API key."
       return
     }
-    if JevCredential.save(key) {
+    if APIKeyCredential.jev.save(key) {
       for task in classificationTasks.values { task.cancel() }
       classificationTasks.removeAll()
       classificationTaskIDs.removeAll()
@@ -196,7 +464,7 @@ final class AppModel: ObservableObject {
 
   func removeJevKey() {
     setJevEnabled(false)
-    JevCredential.remove()
+    APIKeyCredential.jev.remove()
     hasJevKey = false
   }
 
@@ -324,6 +592,7 @@ final class AppModel: ObservableObject {
           try store?.save(observation)
           refresh()
           maybeClassify(observation)
+          maybeEvaluatePersonally(observation)
         } catch {
           setCapture(false)
           storageFailed = true
@@ -335,7 +604,7 @@ final class AppModel: ObservableObject {
   }
 
   private func maybeClassify(_ observation: Observation) {
-    guard jevEnabled, let classificationStore,
+    guard jevEnabled, !personalProfile.evaluationEnabled, let classificationStore,
       policy.acceptedURL(observation.url) == observation.url,
       classificationTasks[observation.url] == nil,
       (try? store?.activeSeconds(for: observation.url)) ?? 0 >= 10
@@ -355,7 +624,7 @@ final class AppModel: ObservableObject {
         return
       }
     }
-    guard let key = JevCredential.load() else {
+    guard let key = APIKeyCredential.jev.load() else {
       hasJevKey = false
       setJevEnabled(false)
       return
@@ -424,6 +693,103 @@ final class AppModel: ObservableObject {
           self.classifications = classificationStore.records
         } catch {
           self.notice = "Could not save a Jev result. Saved visits are unaffected."
+        }
+      }
+    }
+  }
+
+  private func maybeEvaluatePersonally(_ observation: Observation) {
+    guard jevEnabled, personalProfile.evaluationEnabled,
+      personalProfile.readyForWorthJudgment, let personalEvaluationStore,
+      personalProfile.pageRatings[observation.url] == nil,
+      policy.acceptedURL(observation.url) == observation.url,
+      personalTasks[observation.url] == nil,
+      (try? store?.activeSeconds(for: observation.url)) ?? 0 >= 10,
+      let key = APIKeyCredential.jev.load()
+    else { return }
+    let pageURL = observation.url
+    let profile = personalProfile
+    let previous = personalEvaluationStore.record(for: pageURL)
+    if let previous, previous.title == observation.title {
+      if previous.profileRevision == profile.revision, previous.ready,
+        ["Personal evaluation", "Needs review"].contains(previous.status),
+        Date().timeIntervalSince(previous.checkedAt) < 3600
+      {
+        return
+      }
+      if previous.lastAttemptedRevision == profile.revision,
+        previous.attemptCount >= 3
+          || Date().timeIntervalSince(previous.checkedAt) < 300
+      {
+        return
+      }
+    }
+    let policy = self.policy
+    let title = observation.title
+    let taskID = UUID()
+    personalTaskIDs[pageURL] = taskID
+    personalTasks[pageURL] = Task { [weak self] in
+      defer {
+        if self?.personalTaskIDs[pageURL] == taskID {
+          self?.personalTasks[pageURL] = nil
+          self?.personalTaskIDs[pageURL] = nil
+        }
+      }
+      do {
+        let evidence = try await JevService.evidence(
+          pageURL: pageURL, title: title, policy: policy)
+        guard !Task.isCancelled, let self, self.jevEnabled,
+          self.personalProfile.evaluationEnabled,
+          self.personalProfile.revision == profile.revision,
+          self.policy.acceptedURL(pageURL) == pageURL
+        else { return }
+        if previous?.evidenceFingerprint == evidence.fingerprint,
+          previous?.profileRevision == profile.revision, var unchanged = previous,
+          unchanged.ready, ["Personal evaluation", "Needs review"].contains(unchanged.status)
+        {
+          unchanged.checkedAt = Date()
+          try personalEvaluationStore.update(unchanged, for: pageURL)
+          self.personalEvaluations = personalEvaluationStore.records
+          return
+        }
+        let result = try await PersonalJevService.evaluate(
+          evidence: evidence, profile: profile, key: key)
+        guard !Task.isCancelled, self.jevEnabled,
+          self.personalProfile.evaluationEnabled,
+          self.personalProfile.revision == profile.revision,
+          self.policy.acceptedURL(pageURL) == pageURL
+        else { return }
+        try personalEvaluationStore.update(result, for: pageURL)
+        self.personalEvaluations = personalEvaluationStore.records
+      } catch {
+        guard !Task.isCancelled, let self, self.jevEnabled,
+          self.personalProfile.evaluationEnabled,
+          self.personalProfile.revision == profile.revision,
+          self.policy.acceptedURL(pageURL) == pageURL
+        else { return }
+        let status: String
+        if case JevService.Failure.noPublicExcerpt = error {
+          status = "No public excerpt"
+        } else {
+          status = "Personal evaluation unavailable"
+        }
+        var result =
+          previous
+          ?? PersonalEvaluation(
+            title: title, evidenceFingerprint: nil, profileRevision: profile.revision,
+            worth: nil, interestFit: nil, goalFit: nil, confidence: nil, basis: nil,
+            status: status, checkedAt: Date(), attemptCount: 0)
+        result.status = status
+        result.checkedAt = Date()
+        result.attemptCount =
+          (previous?.lastAttemptedRevision == profile.revision ? previous?.attemptCount ?? 0 : 0)
+          + 1
+        result.lastAttemptedRevision = profile.revision
+        do {
+          try personalEvaluationStore.update(result, for: pageURL)
+          self.personalEvaluations = personalEvaluationStore.records
+        } catch {
+          self.notice = "Could not save a personal evaluation. Saved visits are unaffected."
         }
       }
     }
@@ -527,6 +893,29 @@ final class AppModel: ObservableObject {
         correction: nil, status: "Needs review", checkedAt: Date(), attemptCount: 0),
       for: examples[1].1)
     classifications = classificationStore?.records ?? [:]
+    let demoItems = [
+      ArchiveItem(title: "A practical guide to compiler architecture", source: .obsidian),
+      ArchiveItem(title: "Building a small language from scratch", source: .youtube),
+      ArchiveItem(title: "Another productivity app to try", source: .x),
+      ArchiveItem(title: "Generic list of best developer tools", source: .x),
+    ]
+    let demoRatings = Dictionary(
+      uniqueKeysWithValues: zip(
+        demoItems.map(\.id),
+        [MaterialRating.worthwhile, .worthwhile, .notWorthwhile, .notWorthwhile]))
+    let demoProfile = PersonalProfile(
+      goals: "Understand compiler design well enough to build a small language",
+      interests: ["Compiler design", "Local-first software"],
+      items: demoItems, ratings: demoRatings, evaluationEnabled: true)
+    try personalProfileStore?.update(demoProfile)
+    personalProfile = demoProfile
+    try personalEvaluationStore?.update(
+      PersonalEvaluation(
+        title: examples[0].0, evidenceFingerprint: "demo", profileRevision: demoProfile.revision,
+        worth: 3.3, interestFit: 3.6, goalFit: 3.1, confidence: 0.77,
+        basis: .both, status: "Personal evaluation", checkedAt: Date(), attemptCount: 0),
+      for: examples[0].1)
+    personalEvaluations = personalEvaluationStore?.records ?? [:]
     status = "Demo · capture is disabled"
   }
 }
