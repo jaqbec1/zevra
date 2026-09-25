@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import Yams
 
 public enum ArchiveSource: String, Codable, Sendable, CaseIterable {
   case obsidian = "Obsidian"
@@ -11,8 +12,10 @@ public enum ArchiveSource: String, Codable, Sendable, CaseIterable {
 
 public struct ArchiveItem: Codable, Identifiable, Hashable, Sendable {
   public let id: String
-  public let title: String
+  public var title: String
   public let source: ArchiveSource
+  public var url: String?
+  public var topic: String?
 
   public init(title: String, source: ArchiveSource, identity: String? = nil) {
     self.title = String(title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(240))
@@ -133,16 +136,43 @@ public struct PersonalProfile: Codable, Sendable {
 }
 
 public enum ArchiveImporter {
-  public enum ImportError: Error { case unsupportedSelection, tooManyFiles }
+  public enum ImportError: Error, LocalizedError {
+    case unsupportedSelection, tooManyFiles, notesFolderRequired, unreadableFolder
+    case invalidBase(String)
+    case unsupportedNoteProperties
 
-  public static func read(selection: URL, limit: Int = 2_000) throws -> [ArchiveItem] {
+    public var errorDescription: String? {
+      switch self {
+      case .unsupportedSelection:
+        "Choose a folder or a Markdown, JSON, JS, HTML or CSV export."
+      case .tooManyFiles:
+        "The selected collection is too large. Choose a smaller notes folder."
+      case .notesFolderRequired:
+        "Choose a notes folder first, then optionally a Base filter. The Base does not define where notes are read."
+      case .unreadableFolder:
+        "Could not read the complete notes folder. Check folder access and try again. Nothing was imported."
+      case .invalidBase(let reason):
+        "Nothing was imported. \(reason)"
+      case .unsupportedNoteProperties:
+        "Nothing was imported. A note has invalid or unsupported properties. Base import requires categories to be a list of simple [[Note name]] links, without paths or aliases, and complete YAML properties within the first 16 KiB."
+      }
+    }
+  }
+
+  public static func read(selection: URL, base: URL? = nil, limit: Int = 2_000) throws
+    -> [ArchiveItem]
+  {
     let manager = FileManager.default
     var isDirectory: ObjCBool = false
     guard manager.fileExists(atPath: selection.path, isDirectory: &isDirectory) else {
       throw ImportError.unsupportedSelection
     }
+    if let base {
+      guard isDirectory.boolValue else { throw ImportError.notesFolderRequired }
+      return try readObsidianBase(base, source: selection, limit: limit)
+    }
     if !isDirectory.boolValue && selection.pathExtension.lowercased() == "base" {
-      return try readObsidianBase(selection, limit: limit)
+      throw ImportError.notesFolderRequired
     }
     let files: [URL]
     if isDirectory.boolValue {
@@ -176,11 +206,12 @@ public enum ArchiveImporter {
       remainingBytes -= data.count
       let content = String(decoding: data, as: UTF8.self)
       let source = sourceFor(file)
-      for title in titles(
+      for material in materials(
         in: content, extension: file.pathExtension.lowercased(),
         fallback: file.deletingPathExtension().lastPathComponent)
       {
-        let item = ArchiveItem(title: title, source: source)
+        var item = ArchiveItem(title: material.title, source: source)
+        item.url = material.link
         guard item.title.count >= 4, seen.insert(item.id).inserted else { continue }
         items.append(item)
         if items.count >= limit { break }
@@ -193,72 +224,69 @@ public enum ArchiveImporter {
     ["md", "markdown", "json", "js", "html", "htm", "csv"].contains(url.pathExtension.lowercased())
   }
 
-  private static func readObsidianBase(_ base: URL, limit: Int) throws -> [ArchiveItem] {
-    let text = try String(contentsOf: base, encoding: .utf8)
-    guard text.contains("name: All") else { throw ImportError.unsupportedSelection }
-    let pattern = #"categories\.contains\(link\("([^"]+)"\)\)"#
-    let regex = try NSRegularExpression(pattern: pattern)
-    let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
-    let categories = Set(
-      matches.compactMap { match -> String? in
-        guard let range = Range(match.range(at: 1), in: text) else { return nil }
-        return String(text[range])
-      })
-    guard categories.count == 1, let category = categories.first else {
-      throw ImportError.unsupportedSelection
+  private static func readObsidianBase(_ base: URL, source: URL, limit: Int) throws -> [ArchiveItem]
+  {
+    guard base.pathExtension.lowercased() == "base" else { throw ImportError.unsupportedSelection }
+    let handle = try FileHandle(forReadingFrom: base)
+    defer { try? handle.close() }
+    let data = try handle.read(upToCount: 262_145) ?? Data()
+    guard data.count <= 262_144, let text = String(data: data, encoding: .utf8) else {
+      throw ImportError.invalidBase("The Base must be UTF-8 YAML smaller than 256 KiB.")
     }
-    let vault = base.resolvingSymlinksInPath().deletingLastPathComponent()
-      .deletingLastPathComponent()
+    let filter = try ObsidianBaseFilter(contents: text)
+    let root = source.resolvingSymlinksInPath().standardizedFileURL
+    var enumerationFailed = false
     guard
       let iterator = FileManager.default.enumerator(
-        at: vault, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
-        options: [.skipsHiddenFiles, .skipsPackageDescendants])
-    else { throw ImportError.unsupportedSelection }
+        at: root, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+        options: [.skipsHiddenFiles, .skipsPackageDescendants],
+        errorHandler: { _, _ in
+          enumerationFailed = true
+          return false
+        })
+    else { throw ImportError.unreadableFolder }
     var files: [URL] = []
     for case let url as URL in iterator {
       let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
-      guard values.isRegularFile == true, values.isSymbolicLink != true,
+      if values.isSymbolicLink == true {
+        iterator.skipDescendants()
+        continue
+      }
+      guard values.isRegularFile == true,
         ["md", "markdown"].contains(url.pathExtension.lowercased())
       else { continue }
+      let resolved = url.resolvingSymlinksInPath().standardizedFileURL
+      guard resolved.pathComponents.starts(with: root.pathComponents) else {
+        throw ImportError.unreadableFolder
+      }
       if files.count >= 5_000 { throw ImportError.tooManyFiles }
       files.append(url)
     }
+    guard !enumerationFailed else { throw ImportError.unreadableFolder }
     var items: [ArchiveItem] = []
     var seen = Set<String>()
     for file in files.sorted(by: { $0.path < $1.path }) {
-      if items.count >= limit { break }
       let handle = try FileHandle(forReadingFrom: file)
+      defer { try? handle.close() }
       let prefix = try handle.read(upToCount: 16_384) ?? Data()
-      try handle.close()
-      let lines = String(decoding: prefix, as: UTF8.self).components(separatedBy: .newlines)
-      guard lines.first == "---", let end = lines.dropFirst().firstIndex(of: "---") else {
-        continue
+      let lines = String(decoding: prefix, as: UTF8.self)
+        .replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+      guard lines.first == "---" else { continue }
+      guard let end = lines.dropFirst().firstIndex(of: "---") else {
+        throw ImportError.unsupportedNoteProperties
       }
-      let frontmatter = Array(lines[1..<end])
-      guard frontmatterCategories(frontmatter).contains("[[\(category)]]") else { continue }
-      let title =
-        frontmatter.first { $0.hasPrefix("title:") }
-        .map { String($0.dropFirst(6)).trimmingCharacters(in: CharacterSet(charactersIn: " \"'")) }
-        .flatMap { $0.isEmpty ? nil : $0 } ?? file.deletingPathExtension().lastPathComponent
-      let item = ArchiveItem(title: title, source: .obsidian)
-      if item.title.count >= 4, seen.insert(item.id).inserted { items.append(item) }
+      guard
+        let material = try filter.material(
+          in: Array(lines[1..<end]), fallback: file.deletingPathExtension().lastPathComponent)
+      else { continue }
+      var item = ArchiveItem(title: material.title, source: .obsidian)
+      item.url = material.url
+      if item.title.count >= 4, seen.insert(item.id).inserted {
+        guard items.count < limit else { throw ImportError.tooManyFiles }
+        items.append(item)
+      }
     }
     return items
-  }
-
-  private static func frontmatterCategories(_ lines: [String]) -> String {
-    var value = ""
-    var capturing = false
-    for line in lines {
-      if line.hasPrefix("categories:") {
-        value = String(line.dropFirst("categories:".count))
-        capturing = true
-      } else if capturing {
-        guard line.hasPrefix(" ") || line.hasPrefix("\t") else { break }
-        value += " " + line
-      }
-    }
-    return value
   }
 
   private static func supportedInFolder(_ url: URL) -> Bool {
@@ -283,17 +311,29 @@ public enum ArchiveImporter {
     return .other
   }
 
-  private static func titles(in content: String, extension kind: String, fallback: String)
-    -> [String]
+  private struct MaterialText {
+    let title: String
+    let link: String?
+  }
+
+  private static func materials(in content: String, extension kind: String, fallback: String)
+    -> [MaterialText]
   {
     switch kind {
     case "md", "markdown":
-      if let heading = content.split(separator: "\n", omittingEmptySubsequences: false)
-        .first(where: { $0.hasPrefix("# ") })
+      let lines = content.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+      var link: String?
+      if lines.first == "---", let end = lines.dropFirst().firstIndex(of: "---"),
+        let node = try? Yams.compose(yaml: lines[1..<end].joined(separator: "\n"))
       {
-        return [String(heading.dropFirst(2))]
+        link =
+          ["url", "source", "link"].compactMap { node[$0]?.string }.compactMap(ModelImport.webLink)
+          .first
       }
-      return [fallback]
+      if let heading = lines.first(where: { $0.hasPrefix("# ") }) {
+        return [MaterialText(title: String(heading.dropFirst(2)), link: link)]
+      }
+      return [MaterialText(title: fallback, link: link)]
     case "json", "js":
       let json =
         kind == "js"
@@ -306,36 +346,94 @@ public enum ArchiveImporter {
       guard let data = json.data(using: .utf8),
         let object = try? JSONSerialization.jsonObject(with: data)
       else { return [] }
-      var found: [String] = []
+      var found: [MaterialText] = []
       collectTitles(object, into: &found, depth: 0)
       return found
     case "html", "htm":
-      let pattern = #"(?is)<a\b[^>]*>(.*?)</a>"#
+      let pattern = #"(?is)<a\b([^>]*)>(.*?)</a>"#
       let regex = try? NSRegularExpression(pattern: pattern)
       let range = NSRange(content.startIndex..<content.endIndex, in: content)
+      let hrefRegex = try? NSRegularExpression(pattern: #"(?i)\bhref\s*=\s*["']([^"']+)["']"#)
       return (regex?.matches(in: content, range: range) ?? []).compactMap { match in
-        guard let valueRange = Range(match.range(at: 1), in: content) else { return nil }
-        return String(content[valueRange]).replacingOccurrences(
+        guard let valueRange = Range(match.range(at: 2), in: content) else { return nil }
+        let attributes = Range(match.range(at: 1), in: content).map { String(content[$0]) } ?? ""
+        let href = hrefRegex?.firstMatch(
+          in: attributes, range: NSRange(attributes.startIndex..., in: attributes))
+        let link = href.flatMap { Range($0.range(at: 1), in: attributes) }
+          .map { String(attributes[$0]).replacingOccurrences(of: "&amp;", with: "&") }
+          .flatMap(ModelImport.webLink)
+        let title = String(content[valueRange]).replacingOccurrences(
           of: #"<[^>]+>"#, with: " ", options: .regularExpression
         )
         .replacingOccurrences(of: "&amp;", with: "&").trimmingCharacters(
           in: .whitespacesAndNewlines)
+        return MaterialText(title: title, link: link)
       }
     case "csv":
-      return content.split(separator: "\n").dropFirst().prefix(2_000).compactMap { line in
-        let first = line.split(separator: ",", maxSplits: 1).first.map(String.init) ?? ""
-        return first.trimmingCharacters(in: CharacterSet(charactersIn: "\" \r"))
+      let rows = csvRows(content)
+      guard let header = rows.first?.map({ $0.lowercased().trimmingCharacters(in: .whitespaces) })
+      else { return [] }
+      let titleColumn = header.firstIndex(where: { ["title", "name"].contains($0) }) ?? 0
+      let linkColumn = header.firstIndex(where: { ["url", "link", "titleurl"].contains($0) })
+      return rows.dropFirst().prefix(2_000).compactMap { row in
+        guard row.indices.contains(titleColumn) else { return nil }
+        let link = linkColumn.flatMap {
+          row.indices.contains($0) ? ModelImport.webLink(row[$0]) : nil
+        }
+        return MaterialText(title: row[titleColumn], link: link)
       }
     default: return []
     }
   }
 
-  private static func collectTitles(_ value: Any, into found: inout [String], depth: Int) {
+  private static func csvRows(_ content: String) -> [[String]] {
+    var rows: [[String]] = []
+    var row: [String] = []
+    var field = ""
+    var quoted = false
+    var iterator = content.makeIterator()
+    while let character = iterator.next() {
+      if character == "\"" {
+        quoted.toggle()
+        if !quoted {
+          // A second quote reopens the quoted field and represents one literal quote.
+          var lookahead = iterator
+          if lookahead.next() == "\"" {
+            field.append("\"")
+            _ = iterator.next()
+            quoted = true
+          }
+        }
+      } else if character == ",", !quoted {
+        row.append(field)
+        field = ""
+      } else if character.isNewline, !quoted {
+        row.append(field)
+        rows.append(row)
+        row = []
+        field = ""
+        if rows.count >= 2_001 { break }
+      } else {
+        field.append(character)
+      }
+    }
+    if !field.isEmpty || !row.isEmpty {
+      row.append(field)
+      rows.append(row)
+    }
+    return rows
+  }
+
+  private static func collectTitles(_ value: Any, into found: inout [MaterialText], depth: Int) {
     guard depth < 8, found.count < 2_000 else { return }
     if let object = value as? [String: Any] {
       for key in ["full_text", "title"] {
         if let title = object[key] as? String, !title.hasPrefix("http") {
-          found.append(title)
+          let link = ["titleUrl", "url", "expanded_url", "link"].compactMap {
+            object[$0] as? String
+          }
+          .compactMap(ModelImport.webLink).first
+          found.append(MaterialText(title: title, link: link))
           break
         }
       }

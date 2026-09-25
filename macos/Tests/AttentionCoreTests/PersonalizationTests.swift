@@ -72,14 +72,15 @@ import Testing
   try FileManager.default.createDirectory(at: bases, withIntermediateDirectories: true)
   defer { try? FileManager.default.removeItem(at: vault) }
   let base = bases.appendingPathComponent("Consumables.base")
-  try "views:\n  - name: All\n    filters:\n      - categories.contains(link(\"Clippings\"))"
+  try
+    "views:\n  - name: All\n    filters:\n      and:\n        - categories.contains(link(\"Clippings\"))"
     .write(to: base, atomically: true, encoding: .utf8)
   try
     "---\ntitle: Useful compiler guide\ncategories: [\"[[Clippings]]\"]\nstatus: Consumed\n---\nBody"
     .write(to: vault.appendingPathComponent("included.md"), atomically: true, encoding: .utf8)
   try "---\ncategories:\n  - \"[[Other]]\"\n---\n[[Clippings]] in body"
     .write(to: vault.appendingPathComponent("excluded.md"), atomically: true, encoding: .utf8)
-  let imported = try ArchiveImporter.read(selection: base)
+  let imported = try ArchiveImporter.read(selection: vault, base: base)
   #expect(imported.map(\.title) == ["Useful compiler guide"])
   #expect(PersonalProfile(items: imported).ratings.isEmpty)
 }
@@ -107,4 +108,149 @@ import Testing
     profile.relevantItems(for: "A guide to compiler parsing", ratedAs: .worthwhile, limit: 1).first
       == relevant)
   #expect(profile.relevantItems(for: "Cooking technique", limit: 2).count == 2)
+}
+
+@Test(arguments: ["Consumables.base", "Bases/Consumables.base", "Views/Nested/Consumables.base"])
+func movingBaseDoesNotChangeTheSelectedNotes(relativePath: String) throws {
+  let fixture = try BaseImportFixture()
+  defer { fixture.remove() }
+  let base = try fixture.writeBase(at: relativePath)
+  let imported = try ArchiveImporter.read(selection: fixture.vault, base: base)
+  #expect(imported.map(\.title) == ["Selected compiler guide"])
+}
+
+@Test(arguments: [
+  "views:\n  - name: All\n    filters:\n      and:\n        - categories.contains(link(\"Clippings\"))\n        - status == \"Consumed\"",
+  "filters: status == \"Consumed\"\nviews:\n  - name: All\n    filters: categories.contains(link(\"Clippings\"))",
+  "views:\n  - name: All\n    filters: '!categories.contains(link(\"Clippings\"))'",
+  "views:\n  - name: All\n    filters:\n      or:\n        - categories.contains(link(\"Clippings\"))",
+  "views:\n  - name: All\n    limit: 1\n    filters: categories.contains(link(\"Clippings\"))",
+  "views:\n  - name: All\n    filters: categories.contains(link(\"Clippings\"))\n    filters: status == \"Consumed\"",
+  "views:\n  - name: All\n    filters: categories.contains(link(\"Clippings\")) || true",
+  "views:\n  - name: All\n    filters: categories.contains(link(\"Clippings\"))\n  - name: All\n    filters: categories.contains(link(\"Other\"))",
+  "views: [",
+])
+func unsupportedBaseConditionsStopTheWholeImport(yaml: String) throws {
+  let fixture = try BaseImportFixture()
+  defer { fixture.remove() }
+  let base = try fixture.writeBase(contents: yaml)
+  #expect(throws: ArchiveImporter.ImportError.self) {
+    try ArchiveImporter.read(selection: fixture.vault, base: base)
+  }
+}
+
+@Test func baseOutsideSourceAndSymlinksDoNotExpandImport() throws {
+  let fixture = try BaseImportFixture()
+  defer { fixture.remove() }
+  let base = try fixture.writeBase(at: "../External.base")
+  try FileManager.default.createSymbolicLink(
+    at: fixture.vault.appendingPathComponent("linked.md"),
+    withDestinationURL: fixture.root.appendingPathComponent("Unselected/sibling.md"))
+  try FileManager.default.createSymbolicLink(
+    at: fixture.vault.appendingPathComponent("linked-folder"),
+    withDestinationURL: fixture.root.appendingPathComponent("Unselected"))
+  let imported = try ArchiveImporter.read(selection: fixture.vault, base: base)
+  #expect(imported.map(\.title) == ["Selected compiler guide"])
+  #expect(throws: ArchiveImporter.ImportError.self) { try ArchiveImporter.read(selection: base) }
+}
+
+@Test func baseCombinesGlobalAndSelectedViewFilters() throws {
+  let fixture = try BaseImportFixture()
+  defer { fixture.remove() }
+  let base = try fixture.writeBase(
+    contents: """
+      filters: categories.contains(link("Clippings"))
+      views:
+        - name: All
+          type: table
+          order: [note.title]
+          filters:
+            and:
+              - categories.contains(link("Compilers"))
+        - name: Other view
+          filters: status == "Consumed"
+      """)
+  try
+    "---\r\ntitle: 'Both categories'\r\ncategories:\r\n  - '[[Clippings]]'\r\n  - '[[Compilers]]'\r\n---\r\nBody"
+    .write(to: fixture.vault.appendingPathComponent("both.md"), atomically: true, encoding: .utf8)
+  #expect(
+    try ArchiveImporter.read(selection: fixture.vault, base: base).map(\.title) == [
+      "Both categories"
+    ])
+}
+
+@Test(arguments: [
+  "categories: '[['", "categories: ['[[Clippings|Alias]]']",
+  "categories: ['[[Clippings]]']\ncategories: ['[[Other]]']",
+  "categories: ['[[Folder/Clippings]]']", "categories: [broken",
+  "categories: ['[[Clippings]]']\nlarge: " + String(repeating: "x", count: 16_384),
+])
+func invalidNotePropertiesStopImport(metadata: String) throws {
+  let fixture = try BaseImportFixture()
+  defer { fixture.remove() }
+  let base = try fixture.writeBase()
+  try "---\n\(metadata)\n---\nBody".write(
+    to: fixture.vault.appendingPathComponent("z-invalid.md"), atomically: true, encoding: .utf8)
+  #expect(throws: ArchiveImporter.ImportError.self) {
+    try ArchiveImporter.read(selection: fixture.vault, base: base)
+  }
+}
+
+@Test func baseImportRejectsTruncationInsteadOfReturningPartialResults() throws {
+  let fixture = try BaseImportFixture()
+  defer { fixture.remove() }
+  let base = try fixture.writeBase()
+  try "---\ntitle: Second matching note\ncategories: ['[[Clippings]]']\n---\nBody".write(
+    to: fixture.vault.appendingPathComponent("second.md"), atomically: true, encoding: .utf8)
+  #expect(throws: ArchiveImporter.ImportError.self) {
+    try ArchiveImporter.read(selection: fixture.vault, base: base, limit: 1)
+  }
+}
+
+@Test(arguments: [
+  "", "# Empty properties", "title: No categories", "categories:", "categories: []",
+])
+func notesWithoutCategoriesDoNotMatch(metadata: String) throws {
+  let fixture = try BaseImportFixture()
+  defer { fixture.remove() }
+  let base = try fixture.writeBase()
+  try "---\n\(metadata)\n---\n[[Clippings]] in body".write(
+    to: fixture.vault.appendingPathComponent("empty.md"), atomically: true, encoding: .utf8)
+  #expect(
+    try ArchiveImporter.read(selection: fixture.vault, base: base).map(\.title) == [
+      "Selected compiler guide"
+    ])
+}
+
+private struct BaseImportFixture {
+  let root: URL
+  let vault: URL
+
+  init() throws {
+    root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    vault = root.appendingPathComponent("Selected")
+    let sibling = root.appendingPathComponent("Unselected")
+    for folder in [vault, sibling] {
+      try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    }
+    try
+      "---\ntitle: Selected compiler guide\ncategories: [\"[[Clippings]]\"]\nstatus: New\n---\nBody"
+      .write(to: vault.appendingPathComponent("selected.md"), atomically: true, encoding: .utf8)
+    try "---\ntitle: Unselected sibling note\ncategories: [\"[[Clippings]]\"]\n---\nBody"
+      .write(to: sibling.appendingPathComponent("sibling.md"), atomically: true, encoding: .utf8)
+  }
+
+  func writeBase(
+    at relativePath: String = "Bases/Consumables.base",
+    contents: String =
+      "views:\n  - name: All\n    filters:\n      and:\n        - categories.contains(link(\"Clippings\"))"
+  ) throws -> URL {
+    let base = vault.appendingPathComponent(relativePath)
+    try FileManager.default.createDirectory(
+      at: base.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try contents.write(to: base, atomically: true, encoding: .utf8)
+    return base
+  }
+
+  func remove() { try? FileManager.default.removeItem(at: root) }
 }

@@ -33,6 +33,12 @@ final class AppModel: ObservableObject {
   @Published private(set) var personalEvaluations: [String: PersonalEvaluation] = [:]
   @Published private(set) var importingArchive = false
 
+  @Published var importDraft: ImportDraft?
+  @Published private(set) var analyzingImport = false
+  @Published private(set) var hasOpenAIKey = false
+  @Published var importError: String?
+  private var importAnalysis: Task<Void, Never>?
+
   let demo: Bool
   let deviceID: String
   private var store: ObservationStore?
@@ -114,7 +120,8 @@ final class AppModel: ObservableObject {
       return
     }
     subscribe()
-    hasJevKey = JevCredential.load() != nil
+    hasJevKey = APIKeyCredential.jev.load() != nil
+    hasOpenAIKey = APIKeyCredential.openAI.load() != nil
     jevEnabled = defaults.bool(forKey: "jevEnabled") && classificationStore != nil && hasJevKey
     refreshPermissions()
     if cloudContainer != nil {
@@ -273,29 +280,137 @@ final class AppModel: ObservableObject {
     updateProfile(updated, using: personalProfileStore)
   }
 
-  func importArchive(_ selection: URL) {
-    guard !demo, !importingArchive, let personalProfileStore else { return }
+  func importArchive(_ selection: URL, base: URL? = nil) {
+    guard !demo, !importingArchive, personalProfileStore != nil else { return }
     importingArchive = true
     Task {
+      defer { importingArchive = false }
       do {
         let imported = try await Task.detached(priority: .userInitiated) {
           let scoped = selection.startAccessingSecurityScopedResource()
-          defer { if scoped { selection.stopAccessingSecurityScopedResource() } }
-          return try ArchiveImporter.read(selection: selection)
+          let baseScoped = base?.startAccessingSecurityScopedResource() == true
+          defer {
+            if scoped { selection.stopAccessingSecurityScopedResource() }
+            if baseScoped { base?.stopAccessingSecurityScopedResource() }
+          }
+          return try ArchiveImporter.read(selection: selection, base: base)
         }.value
-        var updated = personalProfile
-        let existing = Set(updated.items.map(\.id))
-        updated.items.append(contentsOf: imported.filter { !existing.contains($0.id) })
-        updated.items = Array(updated.items.prefix(2_000))
-        updateProfile(updated, using: personalProfileStore)
-        notice =
-          "Imported \(imported.count) candidate materials locally. Saved or watched does not mean worthwhile."
+        guard !imported.isEmpty else {
+          notice = "No candidate materials found in this source."
+          return
+        }
+        importError = nil
+        importDraft = ImportDraft(candidates: imported)
+      } catch let error as ArchiveImporter.ImportError {
+        notice = error.localizedDescription
       } catch {
         notice =
-          "Could not read that selection. Choose an Obsidian Base, folder or Markdown, JSON, JS, HTML or CSV export."
+          "Could not read the selected archive or Base. Check file access and try again. Nothing was imported."
       }
-      importingArchive = false
     }
+  }
+
+  func saveOpenAIKey(_ value: String) {
+    guard !demo else { return }
+    let key = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !key.isEmpty, !key.contains("\n"), !key.contains("\r") else {
+      importError = "Enter a valid OpenAI API key."
+      return
+    }
+    if APIKeyCredential.openAI.save(key) {
+      hasOpenAIKey = true
+      importError = nil
+    } else {
+      importError = "Could not save the OpenAI key in this Mac's Keychain."
+    }
+  }
+
+  func removeOpenAIKey() {
+    guard !demo else { return }
+    importAnalysis?.cancel()
+    importAnalysis = nil
+    analyzingImport = false
+    APIKeyCredential.openAI.remove()
+    hasOpenAIKey = APIKeyCredential.openAI.load() != nil
+    if hasOpenAIKey { importError = "Could not remove the OpenAI key. Try again." }
+  }
+
+  func analyzeImport() {
+    guard !demo, !analyzingImport, let draft = importDraft else { return }
+    guard let key = APIKeyCredential.openAI.load() else {
+      importError = ModelImport.Failure.missingKey.localizedDescription
+      return
+    }
+    do {
+      let candidates = try draft.selectedMaterials(policy: viewingPolicy)
+      importError = nil
+      analyzingImport = true
+      importAnalysis = Task {
+        do {
+          let result = try await ModelImport.analyze(candidates: candidates, apiKey: key)
+          guard !Task.isCancelled, importDraft?.id == draft.id else { return }
+          var reviewed = draft
+          let analyzed = Dictionary(uniqueKeysWithValues: result.materials.map { ($0.id, $0) })
+          reviewed.materials = draft.materials.map { analyzed[$0.id] ?? $0 }
+          reviewed.interests = result.interests
+          reviewed.intentions = result.intentions
+          reviewed.modelGenerated = true
+          importDraft = reviewed
+        } catch {
+          guard !Task.isCancelled, importDraft?.id == draft.id else { return }
+          importError = error.localizedDescription
+        }
+        analyzingImport = false
+        importAnalysis = nil
+      }
+    } catch { importError = error.localizedDescription }
+  }
+
+  func cancelImport() {
+    importAnalysis?.cancel()
+    importAnalysis = nil
+    analyzingImport = false
+    importDraft = nil
+    importError = nil
+  }
+
+  func saveReviewedImport() {
+    guard !analyzingImport, let draft = importDraft, let personalProfileStore else { return }
+    do {
+      let updated = try draft.applying(to: personalProfile, policy: viewingPolicy)
+      guard updated.revision != personalProfile.revision else {
+        cancelImport()
+        return
+      }
+      if updateProfile(updated, using: personalProfileStore) {
+        cancelImport()
+        notice =
+          demo
+          ? "Demo: approved results saved in memory only."
+          : "Approved materials and profile changes saved on this Mac."
+      } else {
+        importError = "Could not save the profile. Your draft is still available; try again."
+        notice = nil
+      }
+    } catch { importError = error.localizedDescription }
+  }
+
+  func previewImportDemo() {
+    guard demo else { return }
+    var draft = ImportDraft(candidates: [
+      ArchiveItem(title: "A practical guide to compiler design", source: .obsidian),
+      ArchiveItem(title: "Building a local-first reading archive", source: .youtube),
+    ])
+    draft.materials[0].topic = "Compilers"
+    draft.materials[0].link = "https://example.com/compilers"
+    draft.interests = [
+      ImportSuggestion(text: "Compiler design", sourceIDs: [draft.materials[0].id])
+    ]
+    draft.intentions = [
+      ImportSuggestion(text: "Learn how parsers work", sourceIDs: [draft.materials[0].id])
+    ]
+    draft.modelGenerated = true
+    importDraft = draft
   }
 
   func setPersonalEvaluation(_ enabled: Bool) {
@@ -310,15 +425,19 @@ final class AppModel: ObservableObject {
     updateProfile(updated, using: personalProfileStore)
   }
 
-  private func updateProfile(_ updated: PersonalProfile, using store: PersonalProfileStore) {
+  @discardableResult
+  private func updateProfile(_ updated: PersonalProfile, using store: PersonalProfileStore) -> Bool
+  {
     do {
       try store.update(updated)
       personalProfile = updated
       for task in personalTasks.values { task.cancel() }
       personalTasks.removeAll()
       personalTaskIDs.removeAll()
+      return true
     } catch {
       notice = "Could not save the personal profile. Previous data is unchanged."
+      return false
     }
   }
 
@@ -329,7 +448,7 @@ final class AppModel: ObservableObject {
       notice = "Enter a TypeSafe API key."
       return
     }
-    if JevCredential.save(key) {
+    if APIKeyCredential.jev.save(key) {
       for task in classificationTasks.values { task.cancel() }
       classificationTasks.removeAll()
       classificationTaskIDs.removeAll()
@@ -345,7 +464,7 @@ final class AppModel: ObservableObject {
 
   func removeJevKey() {
     setJevEnabled(false)
-    JevCredential.remove()
+    APIKeyCredential.jev.remove()
     hasJevKey = false
   }
 
@@ -505,7 +624,7 @@ final class AppModel: ObservableObject {
         return
       }
     }
-    guard let key = JevCredential.load() else {
+    guard let key = APIKeyCredential.jev.load() else {
       hasJevKey = false
       setJevEnabled(false)
       return
@@ -586,7 +705,7 @@ final class AppModel: ObservableObject {
       policy.acceptedURL(observation.url) == observation.url,
       personalTasks[observation.url] == nil,
       (try? store?.activeSeconds(for: observation.url)) ?? 0 >= 10,
-      let key = JevCredential.load()
+      let key = APIKeyCredential.jev.load()
     else { return }
     let pageURL = observation.url
     let profile = personalProfile

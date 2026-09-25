@@ -4,7 +4,11 @@ import SwiftUI
 
 @main
 struct AttentionLogApp: App {
-  @StateObject private var model = AppModel()
+  #if ZEVRA_IMPORT_PREVIEW
+    @StateObject private var model = AppModel(demo: true)
+  #else
+    @StateObject private var model = AppModel()
+  #endif
 
   var body: some Scene {
     Window("Zevra", id: "observations") {
@@ -138,6 +142,20 @@ private struct ObservationsView: View {
       Text(model.notice ?? "")
     }
     .onAppear { goalsDraft = model.personalProfile.goals }
+    .onChange(of: model.personalProfile.goals) { _, value in goalsDraft = value }
+    .sheet(
+      item: $model.importDraft, onDismiss: { model.cancelImport() },
+      content: { presentedDraft in
+        ImportReviewView(
+          model: model,
+          draft: Binding(
+            // SwiftUI can read the sheet's binding while dismissal is animating.
+            get: { model.importDraft ?? presentedDraft },
+            set: { value in
+              guard model.importDraft?.id == presentedDraft.id else { return }
+              model.importDraft = value
+            }))
+      })
   }
 
   private var library: some View {
@@ -408,24 +426,49 @@ private struct ObservationsView: View {
           subtitle: "Let Zevra judge whether a page is worth your time now."
         ) {
           Text(
-            "Choose an Obsidian Base, a folder or an export. A Base imports only matching note titles. Titles stay on this Mac unless you rate one as an example. Saved or watched does not mean worthwhile."
+            "Choose a folder or an export. To filter notes with a Base, choose the notes folder first, then the Base. The Base imports matching titles from its All view. Review the selected materials before saving. Optional OpenAI analysis sends only the titles and links shown in the preview. Saved or watched does not mean worthwhile."
           )
           .font(.caption).foregroundStyle(.secondary)
           HStack {
-            Button(model.importingArchive ? "Importing…" : "Choose archive…") {
+            Button(model.importingArchive ? "Importing…" : "Choose source…") {
               let panel = NSOpenPanel()
               panel.canChooseDirectories = true
               panel.canChooseFiles = true
               panel.allowsMultipleSelection = false
-              panel.prompt = "Import selected archive"
+              panel.prompt = "Review source"
               if panel.runModal() == .OK, let selection = panel.url {
                 model.importArchive(selection)
+              }
+            }
+            .disabled(model.demo || model.importingArchive)
+            Button("Filter notes with Base…") {
+              let sourcePanel = NSOpenPanel()
+              sourcePanel.canChooseDirectories = true
+              sourcePanel.canChooseFiles = false
+              sourcePanel.allowsMultipleSelection = false
+              sourcePanel.message =
+                "Choose the notes folder to import from. Only notes inside this folder will be read."
+              sourcePanel.prompt = "Choose notes folder"
+              if sourcePanel.runModal() == .OK, let source = sourcePanel.url {
+                let basePanel = NSOpenPanel()
+                basePanel.canChooseDirectories = false
+                basePanel.canChooseFiles = true
+                basePanel.allowsMultipleSelection = false
+                basePanel.message =
+                  "Choose a .base file. Its All view and global filters will apply to the selected notes folder. Unsupported conditions stop the import."
+                basePanel.prompt = "Review filtered notes"
+                if basePanel.runModal() == .OK, let base = basePanel.url {
+                  model.importArchive(source, base: base)
+                }
               }
             }
             .disabled(model.demo || model.importingArchive)
             Spacer()
             Text("\(model.personalProfile.items.count) candidate materials")
               .font(.caption).foregroundStyle(.secondary)
+          }
+          if model.demo {
+            Button("Preview import review") { model.previewImportDemo() }
           }
           Text(
             "Obsidian \(model.personalProfile.items.filter { $0.source == .obsidian }.count) · X \(model.personalProfile.items.filter { $0.source == .x }.count) · YouTube \(model.personalProfile.items.filter { $0.source == .youtube }.count) · Books \(model.personalProfile.items.filter { $0.source == .books }.count)"
@@ -530,7 +573,7 @@ private struct ObservationsView: View {
             !model.personalProfile.evaluationEnabled
               && (!model.personalProfile.readyForWorthJudgment || !model.jevEnabled))
           Text(
-            "When enabled, Zevra sends a public page excerpt, your saved goals, up to 20 interests you selected and up to 8 examples of each rating to TypeSafe. Unrated archive titles and full notes stay on this Mac. The result is an estimate, not a measured probability of usefulness."
+            "When enabled, Zevra sends a public page excerpt, your saved goals, up to 20 interests you selected and up to 8 examples of each rating to TypeSafe. Unrated archive titles and full notes are not sent to TypeSafe. The result is an estimate, not a measured probability of usefulness."
           )
           .font(.caption).foregroundStyle(.secondary)
         }
