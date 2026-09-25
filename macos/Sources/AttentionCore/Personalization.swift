@@ -159,7 +159,9 @@ public enum ArchiveImporter {
     }
   }
 
-  public static func read(selection: URL, base: URL? = nil, limit: Int = 2_000) throws
+  public static func read(
+    selection: URL, base: URL? = nil, viewName: String? = nil, limit: Int = 2_000
+  ) throws
     -> [ArchiveItem]
   {
     let manager = FileManager.default
@@ -169,7 +171,7 @@ public enum ArchiveImporter {
     }
     if let base {
       guard isDirectory.boolValue else { throw ImportError.notesFolderRequired }
-      return try readObsidianBase(base, source: selection, limit: limit)
+      return try readObsidianBase(base, source: selection, viewName: viewName, limit: limit)
     }
     if !isDirectory.boolValue && selection.pathExtension.lowercased() == "base" {
       throw ImportError.notesFolderRequired
@@ -224,8 +226,11 @@ public enum ArchiveImporter {
     ["md", "markdown", "json", "js", "html", "htm", "csv"].contains(url.pathExtension.lowercased())
   }
 
-  private static func readObsidianBase(_ base: URL, source: URL, limit: Int) throws -> [ArchiveItem]
-  {
+  public static func baseViewNames(at base: URL) throws -> [String] {
+    try ObsidianBaseFilter.viewNames(contents: baseContents(at: base))
+  }
+
+  private static func baseContents(at base: URL) throws -> String {
     guard base.pathExtension.lowercased() == "base" else { throw ImportError.unsupportedSelection }
     let handle = try FileHandle(forReadingFrom: base)
     defer { try? handle.close() }
@@ -233,7 +238,13 @@ public enum ArchiveImporter {
     guard data.count <= 262_144, let text = String(data: data, encoding: .utf8) else {
       throw ImportError.invalidBase("The Base must be UTF-8 YAML smaller than 256 KiB.")
     }
-    let filter = try ObsidianBaseFilter(contents: text)
+    return text
+  }
+
+  private static func readObsidianBase(
+    _ base: URL, source: URL, viewName: String?, limit: Int
+  ) throws -> [ArchiveItem] {
+    let filter = try ObsidianBaseFilter(contents: baseContents(at: base), viewName: viewName)
     let root = source.resolvingSymlinksInPath().standardizedFileURL
     var enumerationFailed = false
     guard

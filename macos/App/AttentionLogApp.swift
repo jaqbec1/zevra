@@ -426,7 +426,7 @@ private struct ObservationsView: View {
           subtitle: "Let Zevra judge whether a page is worth your time now."
         ) {
           Text(
-            "Choose a folder or an export. To filter notes with a Base, choose the notes folder first, then the Base. The Base imports matching titles from its All view. Review the selected materials before saving. Optional OpenAI analysis sends only the titles and links shown in the preview. Saved or watched does not mean worthwhile."
+            "Choose a folder or an export. To filter notes with a Base, choose the notes folder, the Base and its view. Review the selected materials before saving. Optional OpenAI analysis sends only the titles and links shown in the preview. Saved or watched does not mean worthwhile."
           )
           .font(.caption).foregroundStyle(.secondary)
           HStack {
@@ -455,10 +455,10 @@ private struct ObservationsView: View {
                 basePanel.canChooseFiles = true
                 basePanel.allowsMultipleSelection = false
                 basePanel.message =
-                  "Choose a .base file. Its All view and global filters will apply to the selected notes folder. Unsupported conditions stop the import."
+                  "Choose a .base file. Its selected view and global filters will apply to the notes folder. Unsupported conditions stop the import."
                 basePanel.prompt = "Review filtered notes"
                 if basePanel.runModal() == .OK, let base = basePanel.url {
-                  model.importArchive(source, base: base)
+                  reviewBase(source: source, base: base)
                 }
               }
             }
@@ -655,6 +655,38 @@ private struct ObservationsView: View {
       .frame(maxWidth: 700)
       .frame(maxWidth: .infinity)
       .padding(24)
+    }
+  }
+
+  private func reviewBase(source: URL, base: URL) {
+    let scoped = base.startAccessingSecurityScopedResource()
+    defer { if scoped { base.stopAccessingSecurityScopedResource() } }
+    do {
+      let names = try ArchiveImporter.baseViewNames(at: base)
+      guard let first = names.first else { return }
+      var selected = first
+      if names.count > 1 {
+        let picker = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 320, height: 28))
+        picker.addItems(withTitles: names)
+        picker.setAccessibilityLabel("Base view")
+        if names.contains("All") { picker.selectItem(withTitle: "All") }
+        let alert = NSAlert()
+        alert.messageText = "Choose Base view"
+        alert.informativeText =
+          "This view and the Base's global filters select notes from your chosen folder. Unsupported conditions stop the import."
+        alert.accessoryView = picker
+        alert.addButton(withTitle: "Review notes")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn,
+          let name = picker.titleOfSelectedItem
+        else { return }
+        selected = name
+      }
+      model.importArchive(source, base: base, viewName: selected)
+    } catch let error as ArchiveImporter.ImportError {
+      model.notice = error.localizedDescription
+    } catch {
+      model.notice = "Could not read the selected Base. Check file access and try again."
     }
   }
 

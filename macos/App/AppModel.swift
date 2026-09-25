@@ -280,7 +280,7 @@ final class AppModel: ObservableObject {
     updateProfile(updated, using: personalProfileStore)
   }
 
-  func importArchive(_ selection: URL, base: URL? = nil) {
+  func importArchive(_ selection: URL, base: URL? = nil, viewName: String? = nil) {
     guard !demo, !importingArchive, personalProfileStore != nil else { return }
     importingArchive = true
     Task {
@@ -293,7 +293,7 @@ final class AppModel: ObservableObject {
             if scoped { selection.stopAccessingSecurityScopedResource() }
             if baseScoped { base?.stopAccessingSecurityScopedResource() }
           }
-          return try ArchiveImporter.read(selection: selection, base: base)
+          return try ArchiveImporter.read(selection: selection, base: base, viewName: viewName)
         }.value
         guard !imported.isEmpty else {
           notice = "No candidate materials found in this source."

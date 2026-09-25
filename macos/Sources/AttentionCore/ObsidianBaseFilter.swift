@@ -5,25 +5,24 @@ import Yams
 struct ObsidianBaseFilter {
   let categories: Set<String>
 
-  init(contents: String) throws {
-    let root = try Self.mapping(Self.parse(contents), context: "Base document")
-    try Self.allowKeys(
-      ["filters", "views", "properties", "formulas"], in: root, context: "Base document")
-    guard let views = root["views"]?.sequence else {
-      throw ArchiveImporter.ImportError.invalidBase("Expected a views list with one All view.")
-    }
-    let allViews = try views.map { try Self.mapping($0, context: "view") }
-      .filter { $0["name"]?.string == "All" }
-    guard allViews.count == 1, let view = allViews.first else {
+  init(contents: String, viewName: String? = nil) throws {
+    let root = try Self.document(contents)
+    let views = try Self.views(in: root)
+    let defaultName =
+      views.contains { $0["name"]?.string == "All" }
+      ? "All" : (views.count == 1 ? views.first?["name"]?.string : nil)
+    guard let selectedName = viewName ?? defaultName,
+      let view = views.first(where: { $0["name"]?.string == selectedName })
+    else {
       throw ArchiveImporter.ImportError.invalidBase(
-        "Choose a Base with exactly one view named All.")
+        "Choose an existing view from this Base before importing.")
     }
     try Self.allowKeys(
       ["type", "name", "filters", "order", "sort", "columnSize", "summaries"], in: view,
-      context: "All view (row limits and grouping are not supported)")
+      context: "selected view (row limits and grouping are not supported)")
     var categories = Set<String>()
     for (context, node) in [
-      ("global filters", root["filters"]), ("All view filters", view["filters"]),
+      ("global filters", root["filters"]), ("selected view filters", view["filters"]),
     ] {
       if let node {
         categories.formUnion(try Self.readCategories(node, context: context, depth: 0))
@@ -31,9 +30,38 @@ struct ObsidianBaseFilter {
     }
     guard !categories.isEmpty else {
       throw ArchiveImporter.ImportError.invalidBase(
-        "Add a supported category filter to the All view or global filters.")
+        "Add a supported category filter to the selected view or global filters.")
     }
     self.categories = categories
+  }
+
+  static func viewNames(contents: String) throws -> [String] {
+    try views(in: document(contents)).compactMap { $0["name"]?.string }
+  }
+
+  private static func document(_ contents: String) throws -> [String: Node] {
+    let root = try mapping(parse(contents), context: "Base document")
+    try allowKeys(
+      ["filters", "views", "properties", "formulas"], in: root, context: "Base document")
+    return root
+  }
+
+  private static func views(in root: [String: Node]) throws -> [[String: Node]] {
+    guard let nodes = root["views"]?.sequence, !nodes.isEmpty else {
+      throw ArchiveImporter.ImportError.invalidBase("Expected a nonempty views list.")
+    }
+    var names = Set<String>()
+    return try nodes.map { node in
+      let view = try mapping(node, context: "view")
+      guard let name = view["name"]?.string,
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        names.insert(name).inserted
+      else {
+        throw ArchiveImporter.ImportError.invalidBase(
+          "Each view must have a unique, nonempty name.")
+      }
+      return view
+    }
   }
 
   func material(in lines: [String], fallback: String) throws -> (title: String, url: String?)? {

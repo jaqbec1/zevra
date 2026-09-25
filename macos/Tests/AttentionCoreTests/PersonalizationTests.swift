@@ -222,6 +222,69 @@ func notesWithoutCategoriesDoNotMatch(metadata: String) throws {
     ])
 }
 
+@Test(arguments: ["People", "Tools", "All things"])
+func singleBaseViewDoesNotRequireTheNameAll(name: String) throws {
+  let fixture = try BaseImportFixture()
+  defer { fixture.remove() }
+  let base = try fixture.writeBase(
+    contents: """
+      views:
+        - name: \(name)
+          filters: categories.contains(link("Clippings"))
+      """)
+  #expect(try ArchiveImporter.baseViewNames(at: base) == [name])
+  #expect(
+    try ArchiveImporter.read(selection: fixture.vault, base: base).map(\.title) == [
+      "Selected compiler guide"
+    ])
+}
+
+@Test func choosingBaseViewAppliesItsWholeFilter() throws {
+  let fixture = try BaseImportFixture()
+  defer { fixture.remove() }
+  let base = try fixture.writeBase(
+    contents: """
+      filters: categories.contains(link("Clippings"))
+      views:
+        - name: All things
+          filters: categories.contains(link("Compilers"))
+        - name: Owned
+          filters: status == "Owned"
+      """)
+  try "---\ntitle: Both categories\ncategories: ['[[Clippings]]', '[[Compilers]]']\n---\n".write(
+    to: fixture.vault.appendingPathComponent("both.md"), atomically: true, encoding: .utf8)
+  #expect(try ArchiveImporter.baseViewNames(at: base) == ["All things", "Owned"])
+  #expect(throws: ArchiveImporter.ImportError.self) {
+    try ArchiveImporter.read(selection: fixture.vault, base: base)
+  }
+  #expect(
+    try ArchiveImporter.read(selection: fixture.vault, base: base, viewName: "All things").map(
+      \.title)
+      == ["Both categories"])
+  for name in ["Owned", "Missing"] {
+    #expect(throws: ArchiveImporter.ImportError.self) {
+      try ArchiveImporter.read(selection: fixture.vault, base: base, viewName: name)
+    }
+  }
+}
+
+@Test func duplicateBaseViewNamesCannotSelectAnArbitraryFilter() throws {
+  let fixture = try BaseImportFixture()
+  defer { fixture.remove() }
+  let base = try fixture.writeBase(
+    contents: """
+      views:
+        - name: People
+          filters: categories.contains(link("Clippings"))
+        - name: People
+          filters: categories.contains(link("Other"))
+      """)
+  #expect(throws: ArchiveImporter.ImportError.self) { try ArchiveImporter.baseViewNames(at: base) }
+  #expect(throws: ArchiveImporter.ImportError.self) {
+    try ArchiveImporter.read(selection: fixture.vault, base: base, viewName: "People")
+  }
+}
+
 private struct BaseImportFixture {
   let root: URL
   let vault: URL
