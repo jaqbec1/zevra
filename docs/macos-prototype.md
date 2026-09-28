@@ -4,9 +4,13 @@ The user selected Swift and SwiftUI on 2026-09-21. The first slice is a menu-bar
 
 The app is now named **Zevra** and is installed at `/Applications/Zevra.app`. It uses a regular macOS application window, with Dock and Command-Tab access, while retaining its menu-bar controls. Losing focus does not close the window. Existing technical identifiers (`com.jamatyka.AttentionLog`, the CloudKit container, and the local storage directory) remain stable across the display-name change.
 
+## Imported Library (0.3.0)
+
+**Library** shows imported notes and bookmarks separately from captured **Visits**. Search titles, links and topics or filter by source. Open saved links in the default browser, or edit titles and links while preserving identity and ratings. Importing a source opens a review before anything is saved.
+
 ## Browse saved materials
 
-The **Saved materials** view searches titles and URLs across the native app's stored history, including visits older than the first 100 shown. Search ignores letter case and diacritics. **Load more** shows another 100 matching visits; **Clear search** restores the recent list. Each row remains one visit, so repeated visits to an article or video appear separately.
+The **Visits** view searches titles and URLs across the native app's stored history, including visits older than the first 100 shown. Search ignores letter case and diacritics. **Load more** shows another 100 matching visits; **Clear search** restores the recent list. Each row remains one visit, so repeated visits to an article or video appear separately.
 
 Choose **Open** to open the original article or video in the default browser, or **Copy link** to copy its full saved URL. Both actions are also available in the row's context menu. Zevra does not store offline copies or play videos inside its window. Site exclusions still apply to searches and to opening or copying a link, even while capture is paused.
 
@@ -20,7 +24,7 @@ After an eligible HTTPS page accumulates 10 active seconds across saved visits, 
 
 The row labels the provider suggestion and shows **Needs review** below 0.6 confidence. The ellipsis menu lets the user choose **Read deeper**, **Keep as reference**, or **No obvious follow-up**; a human choice takes precedence permanently. Suggestions and corrections live in a separate local `classifications.json` file with owner-only permissions, outside the CloudKit observation schema. The file contains page URLs and judgments, not the API key. The native app does not read the Bun collector database or run a digest. Model quality and a live provider response have not yet been verified for this build.
 
-## Personal evaluation (0.3.0 development build)
+## Personal evaluation (0.3.0)
 
 Folder import includes Markdown notes and structured files named for bookmarks or YouTube watch history. Other export files, including direct messages, are skipped. Selecting one file explicitly accepts any listed format.
 

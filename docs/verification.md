@@ -137,3 +137,12 @@ The idea assessment and plan checks were performed in this session using the sup
 - Clicked Open in Zevra and observed a new Arc window showing Example Domain at the exact saved HTTPS address. Closed that test window. Inspected the Library layout at 960 by 720 pixels; this does not establish full VoiceOver or keyboard accessibility coverage.
 - Restored the original title and URL through the editor, then verified that cancelling another title edit did not save it. The complete parsed profile exactly matched the fresh pre-trial backup. Private source data and backups remain outside Git.
 - Re-ran `sh macos/check.sh` before publication: strict formatting, all 43 native tests, and the Xcode build passed. Automated checks used synthetic data. No provider request was initiated, and no merge, release, or replacement of the installed 0.2.0 app was performed.
+
+### 2026-09-28 — official 0.3.0 release and installation
+
+- PR #3 was merged at `cd3195888f3b43d338c3018f77efa605e7f0e645`; its tree matches the tested feature commit. The universal Release build is version 0.3.0 (4), uses the existing bundle identity and Developer ID team, and has CloudKit disabled.
+- The repository check passed formatting, TypeScript, all 44 Bun tests (183 assertions), extension build and the synthetic demo. The preceding native gate passed 43 tests, formatting and the Xcode build. No live provider request was part of those checks.
+- Apple accepted notarization `3790cd57-5874-4ad8-8961-f42517b93984`. Stapling, strict signature validation and Gatekeeper assessment passed. Published the universal ZIP and SHA-256 checksum in GitHub release `v0.3.0`.
+- Downloaded the public release again, matched its SHA-256 against both the published checksum and the local receipt, and validated the extracted app. Replaced the old installation only after closing the trial app and backing up the application, local data and preferences outside Git.
+- Validated the exact installed `/Applications/Zevra.app`: version 0.3.0 (4), valid signature, valid stapled ticket, Gatekeeper `accepted` / `Notarized Developer ID`. The running executable resolves to that installation. Library opened with all imported materials; the saved profile's SHA-256 remained unchanged after launch.
+- Capture is blocked until the user restores Accessibility permission. Existing settings were preserved, including the user's enabled Jev preference. Live capture, a provider response, Intel execution and first launch on another Mac remain unverified for this installed release.
