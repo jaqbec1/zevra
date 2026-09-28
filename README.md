@@ -6,7 +6,7 @@ Zevra is a standalone Swift macOS app that records eligible Arc page URLs, title
 
 [Download Zevra 0.2.0 for macOS](https://github.com/jaqbec1/zevra/releases/download/v0.2.0/Zevra-macOS-universal.zip) · [Release notes and checksums](https://github.com/jaqbec1/zevra/releases/tag/v0.2.0)
 
-Requires macOS 14 or later; supports Apple Silicon and Intel. Unzip and move `Zevra.app` to Applications, open it, grant Accessibility access, and enable capture. Allowed domains are optional. Search saved materials in the app window. Jev suggestions require a separate opt-in and a TypeSafe API key saved in this Mac's Keychain.
+Requires macOS 14 or later; supports Apple Silicon and Intel. Unzip and move `Zevra.app` to Applications, open it, grant Accessibility access, and enable capture. Allowed domains are optional. Search saved materials in the app window. Jev suggestions require a separate opt-in and a TypeSafe API key saved in this Mac's Keychain. The 0.3.0 development build adds an optional personal evaluation setup: select an Obsidian Base or local archive, state current goals, rate a few examples, then explicitly enable personal requests. See [the macOS guide](docs/macos-prototype.md#personal-evaluation-030-development-build) for the data flow and current limits.
 
 This download is **Developer ID–signed and Apple-notarized**. The notarization ticket is attached to the app. It stores data locally and does not include iCloud sync; separately provisioned development builds retain CloudKit support. A notarized iCloud distribution build is not yet available.
 
