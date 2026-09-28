@@ -146,3 +146,10 @@ The idea assessment and plan checks were performed in this session using the sup
 - Downloaded the public release again, matched its SHA-256 against both the published checksum and the local receipt, and validated the extracted app. Replaced the old installation only after closing the trial app and backing up the application, local data and preferences outside Git.
 - Validated the exact installed `/Applications/Zevra.app`: version 0.3.0 (4), valid signature, valid stapled ticket, Gatekeeper `accepted` / `Notarized Developer ID`. The running executable resolves to that installation. Library opened with all imported materials; the saved profile's SHA-256 remained unchanged after launch.
 - Capture is blocked until the user restores Accessibility permission. Existing settings were preserved, including the user's enabled Jev preference. Live capture, a provider response, Intel execution and first launch on another Mac remain unverified for this installed release.
+
+### 2026-09-28 — installed 0.3.0 live capture and TypeSafe check
+
+- The user enabled Accessibility and explicitly approved keeping Jev enabled for a live TypeSafe trial. The installed app reported Accessibility enabled and classification enabled.
+- Stopped browser automation after detecting the user's interaction with Arc. Verified capture of the public Vitest Trace View page already active in Arc: two persisted visits recorded approximately 8.6 and 14.7 active seconds.
+- A new classification was persisted at 12:17:55 UTC: `Read deeper`, confidence `0.16`, status `Needs review`. The installed app's Visits view displayed the same suggestion and review status. This establishes native capture, persistence and a live provider result; it does not establish recommendation quality or personal-evaluation quality.
+- No ratings or imported materials were changed. Jev remains enabled as requested. Intel execution and first launch on another Mac remain unverified.
