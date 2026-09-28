@@ -153,3 +153,19 @@ The idea assessment and plan checks were performed in this session using the sup
 - Stopped browser automation after detecting the user's interaction with Arc. Verified capture of the public Vitest Trace View page already active in Arc: two persisted visits recorded approximately 8.6 and 14.7 active seconds.
 - A new classification was persisted at 12:17:55 UTC: `Read deeper`, confidence `0.16`, status `Needs review`. The installed app's Visits view displayed the same suggestion and review status. This establishes native capture, persistence and a live provider result; it does not establish recommendation quality or personal-evaluation quality.
 - No ratings or imported materials were changed. Jev remains enabled as requested. Intel execution and first launch on another Mac remain unverified.
+
+### 2026-09-29 — clearer navigation and readable controls (local revision)
+
+- Replaced the top tabs with native sidebar navigation: Saved materials, Browsing history, General, Capture & privacy, AI suggestions, and Interests & goals. Each content destination explains how its data arrives. Import is available directly from the materials screen.
+- Removed green control text, kept the green logo, and added neutral appearance-aware secondary text. Capture and review statuses have text and symbols; navigation uses native selection and keyboard handling. Existing provider, capture, exclusion and persistence logic remains unchanged.
+- `sh macos/check.sh` passed on the final source: strict formatting, all 43 native tests and the normal Xcode build. No compiler warnings or errors were reported in this run. `git diff --check` passed.
+- The separate synthetic preview verified sidebar navigation, keyboard Up/Down, direct import review and cancellation, empty search/reset, light/dark layouts and a narrow window. The resumed check completed light/dark high-contrast appearance inspection. No live provider request or user-data import was part of this UI verification.
+- Changes remain local on `feat/clear-navigation-accessibility`; the installed 0.3.0 release was not replaced. Full VoiceOver and color-vision-deficiency simulations remain unverified. See [navigation and accessibility notes](ui-navigation-accessibility.md) for details and the distinction between measured contrast pairs and full accessibility compliance.
+
+### 2026-09-29 — 0.3.1 window material and release candidate
+
+- Added subtle native behind-window blur with a neutral overlay. Reduce Transparency and increased contrast select an opaque fallback; text and controls are not made transparent.
+- Inspected the isolated synthetic preview in light, dark and high-contrast dark appearances at 860 points wide. A live system Reduce Transparency toggle and macOS 14 runtime remain unverified.
+- Re-ran `sh macos/check.sh` after the material change and version bump: strict formatting, 43 native tests and the Xcode build passed. The universal Release build for 0.3.1 (5), with CloudKit disabled, also succeeded. These checks did not call an AI provider.
+
+- Review found that rated browsing pages also enter the saved library. Renamed the destination to Saved materials and described both sources; no records were filtered or migrated.

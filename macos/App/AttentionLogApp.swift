@@ -14,7 +14,21 @@ struct AttentionLogApp: App {
     Window("Zevra", id: "observations") {
       ObservationsView(model: model)
     }
-    .defaultSize(width: 960, height: 720)
+    .defaultSize(width: 1060, height: 760)
+    #if ZEVRA_IMPORT_PREVIEW
+      .commands {
+        CommandMenu("Preview") {
+          Button("Light appearance") { NSApp.appearance = NSAppearance(named: .aqua) }
+          Button("Dark appearance") { NSApp.appearance = NSAppearance(named: .darkAqua) }
+          Button("High contrast light") {
+            NSApp.appearance = NSAppearance(named: .accessibilityHighContrastAqua)
+          }
+          Button("High contrast dark") {
+            NSApp.appearance = NSAppearance(named: .accessibilityHighContrastDarkAqua)
+          }
+        }
+      }
+    #endif
     MenuBarExtra(
       "Zevra", systemImage: model.capturing ? "circle.inset.filled" : "circle.dotted"
     ) {
@@ -44,22 +58,40 @@ private struct MenuContent: View {
 }
 
 private struct ObservationsView: View {
-  private enum Panel: String, CaseIterable {
-    case library = "Library"
-    case visits = "Visits"
-    case settings = "Settings"
+  private enum Panel: String, CaseIterable, Identifiable {
+    case library = "Saved materials"
+    case visits = "Browsing history"
+    case general = "General"
+    case capture = "Capture & privacy"
+    case suggestions = "AI suggestions"
+    case profile = "Interests & goals"
 
+    var id: String { rawValue }
     var symbol: String {
       switch self {
       case .library: "books.vertical"
       case .visits: "clock"
-      case .settings: "slider.horizontal.3"
+      case .general: "gearshape"
+      case .capture: "hand.raised"
+      case .suggestions: "sparkles"
+      case .profile: "person.crop.circle"
+      }
+    }
+
+    var summary: String {
+      switch self {
+      case .library: "Imported notes, bookmarks and pages you have rated."
+      case .visits: "Pages recorded automatically while you use Arc."
+      case .general: "App startup and storage on this Mac."
+      case .capture: "Choose which browsing activity Zevra can record."
+      case .suggestions: "Control when AI is used and what it receives."
+      case .profile: "Tell personal evaluation what matters to you now."
       }
     }
   }
 
   @ObservedObject var model: AppModel
-  @State private var panel: Panel = .library
+  @State private var panel: Panel? = .library
   @State private var pendingKey = ""
   @State private var goalsDraft = ""
   @State private var interestDraft = ""
@@ -69,80 +101,72 @@ private struct ObservationsView: View {
   }
 
   var body: some View {
-    VStack(spacing: 0) {
-      HStack(alignment: .center, spacing: 14) {
-        Image(systemName: "square.stack.3d.up.fill")
-          .font(.system(size: 19, weight: .medium))
-          .foregroundStyle(.white)
-          .frame(width: 42, height: 42)
-          .background(.green.gradient, in: RoundedRectangle(cornerRadius: 12))
-          .accessibilityHidden(true)
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Zevra").font(.system(size: 21, weight: .semibold, design: .rounded))
-          Text("A quiet record of what held your attention")
-            .font(.caption).foregroundStyle(.secondary)
+    NavigationSplitView {
+      VStack(alignment: .leading, spacing: 0) {
+        HStack(spacing: 10) {
+          Image(systemName: "square.stack.3d.up.fill")
+            .font(.system(size: 17, weight: .medium))
+            .foregroundStyle(.white)
+            .frame(width: 36, height: 36)
+            .background(.green.gradient, in: RoundedRectangle(cornerRadius: 10))
+            .accessibilityHidden(true)
+          Text("Zevra").font(.title2.weight(.semibold))
+          if model.demo { Text("Preview").font(.caption).foregroundStyle(ZevraStyle.secondaryText) }
         }
-        Spacer()
-        if model.demo {
-          Label("Preview", systemImage: "sparkles")
-            .font(.caption.weight(.medium))
-            .foregroundStyle(.secondary)
-        } else {
-          HStack(spacing: 7) {
-            Circle().fill(model.capturing ? Color.green : Color.secondary)
-              .frame(width: 7, height: 7)
-            Text(model.status).lineLimit(1)
+        .padding(16)
+        List(selection: $panel) {
+          Section {
+            navigationItem(.library)
+            navigationItem(.visits)
+          } header: {
+            Text("Your content").foregroundStyle(ZevraStyle.secondaryText)
           }
-          .font(.caption).foregroundStyle(.secondary)
-          .help(model.status)
+          Section {
+            navigationItem(.general)
+            navigationItem(.capture)
+            navigationItem(.suggestions)
+            navigationItem(.profile)
+          } header: {
+            Text("Settings").foregroundStyle(ZevraStyle.secondaryText)
+          }
         }
+        .listStyle(.sidebar)
+        .accessibilityLabel("Main navigation")
+        Divider()
+        VStack(alignment: .leading, spacing: 10) {
+          Label(model.status, systemImage: captureSymbol)
+            .font(.callout)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityElement(children: .combine)
+          if !model.demo {
+            Button {
+              model.setCapture(!model.capturing)
+            } label: {
+              Label(
+                model.capturing ? "Pause capture" : "Resume capture",
+                systemImage: model.capturing ? "pause" : "play")
+            }
+            .disabled(model.storageFailed)
+            .buttonStyle(.bordered)
+          }
+        }
+        .padding(16)
       }
-      .padding(.horizontal, 24)
-      .padding(.top, 20)
-      .padding(.bottom, 16)
-
-      HStack(spacing: 8) {
-        ForEach(Panel.allCases, id: \.self) { item in
-          Button {
-            panel = item
-          } label: {
-            Label(item.rawValue, systemImage: item.symbol)
-              .font(.subheadline.weight(panel == item ? .semibold : .medium))
-              .padding(.horizontal, 12)
-              .padding(.vertical, 8)
-              .foregroundStyle(panel == item ? .primary : .secondary)
-              .background(
-                panel == item ? Color(nsColor: .controlBackgroundColor) : .clear,
-                in: RoundedRectangle(cornerRadius: 8))
-          }
-          .buttonStyle(.plain)
-          .accessibilityAddTraits(panel == item ? .isSelected : [])
-        }
-        Spacer()
-        if !model.demo {
-          Button(model.capturing ? "Pause capture" : "Resume capture") {
-            model.setCapture(!model.capturing)
-          }
-          .buttonStyle(.bordered)
-          .disabled(model.storageFailed)
-        }
-      }
-      .padding(.horizontal, 20)
-      .padding(.bottom, 12)
-      Divider()
-
-      switch panel {
+      .navigationSplitViewColumnWidth(min: 210, ideal: 225, max: 270)
+    } detail: {
+      switch panel ?? .library {
       case .library:
-        ImportedLibraryView(model: model, chooseSource: { panel = .settings })
+        ImportedLibraryView(model: model, chooseSource: chooseSource, chooseBase: chooseBase)
       case .visits:
         library
-      case .settings:
+      case .general, .capture, .suggestions, .profile:
         settings
       }
     }
-    .frame(minWidth: 740, minHeight: 600)
-    .background(Color(nsColor: .windowBackgroundColor))
-    .tint(.green)
+    .navigationSplitViewStyle(.balanced)
+    .frame(minWidth: 860, minHeight: 600)
+    .modifier(ZevraWindowSurface())
+    .tint(.primary)
     .alert(
       "Zevra",
       isPresented: Binding(get: { model.notice != nil }, set: { if !$0 { model.notice = nil } })
@@ -159,7 +183,6 @@ private struct ObservationsView: View {
         ImportReviewView(
           model: model,
           draft: Binding(
-            // SwiftUI can read the sheet's binding while dismissal is animating.
             get: { model.importDraft ?? presentedDraft },
             set: { value in
               guard model.importDraft?.id == presentedDraft.id else { return }
@@ -168,15 +191,31 @@ private struct ObservationsView: View {
       })
   }
 
+  private var captureSymbol: String {
+    if model.demo { return "eye" }
+    if model.storageFailed || !model.accessibilityGranted { return "exclamationmark.triangle" }
+    return model.capturing ? "record.circle" : "pause.circle"
+  }
+
+  private func navigationItem(_ item: Panel) -> some View {
+    Label(item.rawValue, systemImage: item.symbol)
+      .font(.body.weight(panel == item ? .semibold : .regular))
+      .padding(.vertical, 5)
+      .tag(item)
+      .help(item.summary)
+  }
+
   private var library: some View {
     VStack(alignment: .leading, spacing: 0) {
       HStack(alignment: .firstTextBaseline) {
         VStack(alignment: .leading, spacing: 4) {
-          Text("Visits").font(.system(size: 24, weight: .semibold, design: .rounded))
+          Text("Browsing history").font(.title.weight(.semibold))
+          Text("Pages recorded automatically while you use Arc.")
+            .font(.body).foregroundStyle(ZevraStyle.secondaryText)
           Text(
             "\(model.observations.count) \(model.observations.count == 1 ? "visit" : "visits") shown"
           )
-          .font(.caption).foregroundStyle(.secondary)
+          .font(.caption).foregroundStyle(ZevraStyle.secondaryText)
         }
         Spacer()
         Button {
@@ -191,15 +230,18 @@ private struct ObservationsView: View {
       .padding(.bottom, 16)
 
       HStack(spacing: 9) {
-        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-        TextField("Search titles or URLs", text: $model.searchText)
-          .textFieldStyle(.plain)
-          .accessibilityLabel("Search visits")
+        Image(systemName: "magnifyingglass").foregroundStyle(ZevraStyle.secondaryText)
+        TextField(
+          "Search titles or URLs", text: $model.searchText,
+          prompt: Text("Search titles or URLs").foregroundStyle(ZevraStyle.secondaryText)
+        )
+        .textFieldStyle(.plain)
+        .accessibilityLabel("Search visits")
         if !model.searchText.isEmpty {
           Button {
             model.searchText = ""
           } label: {
-            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+            Image(systemName: "xmark.circle.fill").foregroundStyle(ZevraStyle.secondaryText)
           }
           .buttonStyle(.plain)
           .accessibilityLabel("Clear search")
@@ -218,7 +260,7 @@ private struct ObservationsView: View {
           description: Text(
             isSearching
               ? "Try a different title or URL."
-              : "Spend a few seconds on an eligible page in Arc. Saved pages appear here."
+              : "Spend a few seconds on an eligible page in Arc. Recorded visits appear here. Imported notes and bookmarks live in Saved materials."
           )
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -245,8 +287,8 @@ private struct ObservationsView: View {
         Spacer()
         Text("Active time is estimated from consecutive samples")
       }
-      .font(.caption2)
-      .foregroundStyle(.tertiary)
+      .font(.caption)
+      .foregroundStyle(ZevraStyle.secondaryText)
       .padding(.horizontal, 24)
       .padding(.vertical, 11)
     }
@@ -259,7 +301,7 @@ private struct ObservationsView: View {
     return HStack(alignment: .top, spacing: 14) {
       Image(systemName: "doc.text")
         .font(.system(size: 17))
-        .foregroundStyle(.secondary)
+        .foregroundStyle(ZevraStyle.secondaryText)
         .frame(width: 36, height: 36)
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 9))
         .accessibilityHidden(true)
@@ -269,18 +311,17 @@ private struct ObservationsView: View {
           .lineLimit(2)
         Text(observation.url)
           .font(.caption)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(ZevraStyle.secondaryText)
           .lineLimit(1)
           .truncationMode(.middle)
           .help(observation.url)
-        HStack(spacing: 10) {
-          Text(observation.deviceID == model.deviceID ? "This Mac" : "Another Mac")
-          Text("·")
-          Text(observation.lastSeenAt.formatted(date: .abbreviated, time: .shortened))
+        VStack(alignment: .leading, spacing: 4) {
+          Text(
+            "\(observation.deviceID == model.deviceID ? "This Mac" : "Another Mac") · \(observation.lastSeenAt.formatted(date: .abbreviated, time: .shortened))"
+          )
           if model.personalProfile.evaluationEnabled,
             let rating = model.personalRating(for: observation)
           {
-            Text("·")
             Label(
               rating == .worthwhile ? "You · Worth it" : "You · Not worth it",
               systemImage: "checkmark.circle"
@@ -290,33 +331,33 @@ private struct ObservationsView: View {
             let worth = evaluation.worth, let interest = evaluation.interestFit,
             let goal = evaluation.goalFit
           {
-            Text("·")
             Label(
               "Worth now \(worth.formatted(.number.precision(.fractionLength(1))))/4",
               systemImage: "sparkles"
             )
-            .foregroundStyle(worth >= 3 ? .green : worth < 1.5 ? .orange : .secondary)
-            Text("Interest \(interest.formatted(.number.precision(.fractionLength(1))))/4")
-            Text("Goals \(goal.formatted(.number.precision(.fractionLength(1))))/4")
+            .foregroundStyle(.primary)
+            Text(
+              "Interest \(interest.formatted(.number.precision(.fractionLength(1))))/4 · Goals \(goal.formatted(.number.precision(.fractionLength(1))))/4"
+            )
             if evaluation.status == "Needs review" {
-              Text("Uncertain").foregroundStyle(.orange)
+              Label("Uncertain", systemImage: "questionmark.circle").foregroundStyle(.primary)
             } else if evaluation.status != "Personal evaluation" {
-              Text(evaluation.status).foregroundStyle(.orange)
+              Text(evaluation.status).foregroundStyle(.primary)
             }
-            if !personalIsCurrent { Text("Older profile").foregroundStyle(.orange) }
+            if !personalIsCurrent { Text("Older profile").foregroundStyle(.primary) }
           } else if model.personalProfile.evaluationEnabled {
-            Text("·")
             Text(personal?.status ?? "Personal evaluation pending")
           } else if let choice = classification?.displayedChoice {
-            Text("·")
             Label(
               "\(classification?.correction == nil ? "Jev" : "You") · \(choice.rawValue)",
               systemImage: classification?.correction == nil ? "sparkle" : "checkmark.circle"
             )
-            .foregroundStyle(classification?.correction == nil ? .secondary : .primary)
+            .foregroundStyle(
+              classification?.correction == nil ? ZevraStyle.secondaryText : Color.primary)
             if classification?.correction == nil {
               if classification?.status == "Needs review" {
-                Text("Needs review").foregroundStyle(.orange)
+                Label("Needs review", systemImage: "exclamationmark.triangle").foregroundStyle(
+                  .primary)
               } else if classification?.status != "Jev suggestion",
                 let status = classification?.status
               {
@@ -324,12 +365,11 @@ private struct ObservationsView: View {
               }
             }
           } else if let classification {
-            Text("·")
             Text(classification.status)
           }
         }
-        .font(.caption2)
-        .foregroundStyle(.secondary)
+        .font(.caption)
+        .foregroundStyle(ZevraStyle.secondaryText)
       }
       Spacer(minLength: 12)
       VStack(alignment: .trailing, spacing: 10) {
@@ -339,7 +379,7 @@ private struct ObservationsView: View {
         )
         .monospacedDigit()
         .font(.caption.weight(.medium))
-        .foregroundStyle(.secondary)
+        .foregroundStyle(ZevraStyle.secondaryText)
         HStack(spacing: 7) {
           Button {
             model.openMaterial(observation)
@@ -421,90 +461,218 @@ private struct ObservationsView: View {
   }
 
   private var settings: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 18) {
-        VStack(alignment: .leading, spacing: 5) {
-          Text("Settings").font(.system(size: 24, weight: .semibold, design: .rounded))
-          Text("Capture and classification are separate choices on this Mac.")
-            .font(.subheadline).foregroundStyle(.secondary)
+    let destination = panel ?? .general
+    return ScrollView {
+      VStack(alignment: .leading, spacing: 28) {
+        VStack(alignment: .leading, spacing: 6) {
+          Text(destination.rawValue).font(.title.weight(.semibold))
+          Text(destination.summary).foregroundStyle(ZevraStyle.secondaryText)
         }
-        .padding(.bottom, 2)
+        switch destination {
+        case .general:
+          generalSettings
+        case .capture:
+          captureSettings
+        case .suggestions:
+          suggestionSettings
+        case .profile:
+          profileSettings
+        default:
+          EmptyView()
+        }
+      }
+      .frame(maxWidth: 700, alignment: .leading)
+      .padding(28)
+      .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+    .id(destination)
+  }
 
-        settingsCard(
-          title: "Personal evaluation",
-          symbol: "person.crop.circle",
-          subtitle: "Let Zevra judge whether a page is worth your time now."
-        ) {
-          Text(
-            "Choose a folder or an export. To filter notes with a Base, choose the notes folder, the Base and its view. Review the selected materials before saving. Optional OpenAI analysis sends only the titles and links shown in the preview. Saved or watched does not mean worthwhile."
+  private var generalSettings: some View {
+    VStack(alignment: .leading, spacing: 24) {
+      settingsSection("Startup") {
+        Toggle(
+          "Launch Zevra at login",
+          isOn: Binding(
+            get: { model.loginEnabled }, set: { model.setLogin($0) })
+        )
+        .disabled(model.demo)
+        Text(model.loginStatus).foregroundStyle(ZevraStyle.secondaryText)
+      }
+      settingsSection("Storage") {
+        Label(model.syncStatus, systemImage: "internaldrive")
+        Text("Imported notes, bookmarks and your personal profile are stored on this Mac.")
+          .foregroundStyle(ZevraStyle.secondaryText)
+      }
+    }
+  }
+
+  private var captureSettings: some View {
+    VStack(alignment: .leading, spacing: 24) {
+      settingsSection("Arc activity") {
+        Toggle(
+          "Record browsing activity",
+          isOn: Binding(
+            get: { model.capturing }, set: { model.setCapture($0) })
+        )
+        .disabled(model.demo || model.storageFailed)
+        Text("Saves page titles, links and estimated active time in Browsing history.")
+          .foregroundStyle(ZevraStyle.secondaryText)
+        HStack(alignment: .top) {
+          Label(
+            model.accessibilityGranted ? "Accessibility enabled" : "Accessibility needed",
+            systemImage: model.accessibilityGranted
+              ? "checkmark.circle" : "exclamationmark.triangle")
+          Spacer()
+          Button("Grant access…") { model.requestAccessibility() }
+            .disabled(model.demo || model.accessibilityGranted)
+        }
+        Text("Permission is used to identify the active Arc document.")
+          .font(.callout).foregroundStyle(ZevraStyle.secondaryText)
+      }
+      settingsSection("Site exclusions") {
+        Text(
+          "Excluded sites are not recorded or sent to AI. Existing visits stay on disk but are hidden."
+        )
+        .foregroundStyle(ZevraStyle.secondaryText)
+        VStack(alignment: .leading, spacing: 6) {
+          Text("Excluded domains").font(.body.weight(.medium))
+          TextField(
+            "Excluded domains", text: $model.excludedDomains,
+            prompt: Text("example.com, another-site.com").foregroundStyle(ZevraStyle.secondaryText)
           )
-          .font(.caption).foregroundStyle(.secondary)
+          .accessibilityLabel("Excluded domains")
+        }
+        VStack(alignment: .leading, spacing: 6) {
+          Text("Only record these domains (optional)").font(.body.weight(.medium))
+          TextField(
+            "Allowed domains", text: $model.allowedDomains,
+            prompt: Text("Leave empty to allow other eligible sites").foregroundStyle(
+              ZevraStyle.secondaryText)
+          )
+          .accessibilityLabel("Allowed domains (optional)")
+        }
+        Text(
+          "Separate domains with commas. Subdomains are included. Built-in sensitive-site exclusions always apply."
+        )
+        .font(.callout).foregroundStyle(ZevraStyle.secondaryText)
+        Button("Save site rules") { model.applyRules() }.disabled(model.demo)
+      }
+    }
+    .textFieldStyle(.roundedBorder)
+  }
+
+  private var suggestionSettings: some View {
+    VStack(alignment: .leading, spacing: 24) {
+      settingsSection("Browsing suggestions · TypeSafe") {
+        Toggle(
+          "Classify eligible pages with Jev",
+          isOn: Binding(get: { model.jevEnabled }, set: { model.setJevEnabled($0) })
+        )
+        .disabled(model.demo || !model.hasJevKey)
+        Text("Suggestions start after 10 seconds of active attention on an eligible page.")
+          .font(.callout).foregroundStyle(ZevraStyle.secondaryText)
+        Text(
+          "When enabled, Zevra fetches a public page excerpt and sends its title, domain and excerpt to TypeSafe. Private or excluded pages stay out. No old visits are sent when you turn it on."
+        )
+        .font(.callout).foregroundStyle(ZevraStyle.secondaryText)
+        Divider()
+        HStack {
+          Label(
+            model.hasJevKey ? "TypeSafe key saved in Keychain" : "No TypeSafe key saved",
+            systemImage: model.hasJevKey ? "key.fill" : "key"
+          )
+          .font(.subheadline)
+          Spacer()
+          if model.hasJevKey {
+            Button("Remove key") { model.removeJevKey() }
+          }
+        }
+        HStack {
+          SecureField("Paste TypeSafe API key", text: $pendingKey)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityLabel("TypeSafe API key")
+          Button(model.hasJevKey ? "Replace key" : "Save key") {
+            model.saveJevKey(pendingKey)
+            pendingKey = ""
+          }
+          .disabled(pendingKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        Text("Suggestions may be uncertain. Your correction always takes precedence.")
+          .font(.callout).foregroundStyle(ZevraStyle.secondaryText)
+      }
+      settingsSection("Personal evaluation · TypeSafe") {
+        Toggle(
+          "Evaluate pages personally with Jev",
+          isOn: Binding(
+            get: { model.personalProfile.evaluationEnabled },
+            set: { model.setPersonalEvaluation($0) })
+        )
+        .disabled(
+          model.demo
+            || (!model.personalProfile.evaluationEnabled
+              && (!model.personalProfile.readyForWorthJudgment || !model.jevEnabled))
+        )
+        Text(
+          "When enabled, Zevra sends a public page excerpt, your saved goals, up to 20 interests you selected and up to 8 examples of each rating to TypeSafe. Unrated archive titles and full notes are not sent to TypeSafe. The result is an estimate, not a measured probability of usefulness."
+        )
+        .font(.callout).foregroundStyle(ZevraStyle.secondaryText)
+        if !model.personalProfile.readyForWorthJudgment || !model.jevEnabled {
+          Label(
+            "Requires Jev, current goals and at least two examples of each rating.",
+            systemImage: "info.circle"
+          )
+          .font(.callout)
+        }
+        Button("Set interests, goals and examples") { panel = .profile }
+      }
+      settingsSection("Import analysis · OpenAI") {
+        Text(
+          "Optional analysis is available when reviewing an import in Saved materials. You choose when to send selected titles and links, then approve the results before saving."
+        )
+        .foregroundStyle(ZevraStyle.secondaryText)
+        Button("Go to saved materials") { panel = .library }
+      }
+    }
+  }
+
+  private var profileSettings: some View {
+    VStack(alignment: .leading, spacing: 24) {
+      settingsSection("Current goals") {
+        TextEditor(text: $goalsDraft)
+          .frame(minHeight: 76)
+          .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+          .accessibilityLabel("Current goals for personal evaluation")
+        HStack {
+          Text("Write what matters now. Archived interests are not treated as current goals.")
+            .font(.callout).foregroundStyle(ZevraStyle.secondaryText)
+          Spacer()
+          Button("Save goals") { model.saveGoals(goalsDraft) }
+            .disabled(model.demo)
+        }
+
+      }
+      settingsSection("Interests") {
+        Text("Suggested words from titles are unverified. Add only topics that fit you.")
+          .font(.callout).foregroundStyle(ZevraStyle.secondaryText)
+        ForEach(model.personalProfile.interests, id: \.self) { interest in
           HStack {
-            Button(model.importingArchive ? "Importing…" : "Choose source…") {
-              let panel = NSOpenPanel()
-              panel.canChooseDirectories = true
-              panel.canChooseFiles = true
-              panel.allowsMultipleSelection = false
-              panel.prompt = "Review source"
-              if panel.runModal() == .OK, let selection = panel.url {
-                model.importArchive(selection)
-              }
-            }
-            .disabled(model.demo || model.importingArchive)
-            Button("Filter notes with Base…") {
-              let sourcePanel = NSOpenPanel()
-              sourcePanel.canChooseDirectories = true
-              sourcePanel.canChooseFiles = false
-              sourcePanel.allowsMultipleSelection = false
-              sourcePanel.message =
-                "Choose the notes folder to import from. Only notes inside this folder will be read."
-              sourcePanel.prompt = "Choose notes folder"
-              if sourcePanel.runModal() == .OK, let source = sourcePanel.url {
-                let basePanel = NSOpenPanel()
-                basePanel.canChooseDirectories = false
-                basePanel.canChooseFiles = true
-                basePanel.allowsMultipleSelection = false
-                basePanel.message =
-                  "Choose a .base file. Its selected view and global filters will apply to the notes folder. Unsupported conditions stop the import."
-                basePanel.prompt = "Review filtered notes"
-                if basePanel.runModal() == .OK, let base = basePanel.url {
-                  reviewBase(source: source, base: base)
-                }
-              }
-            }
-            .disabled(model.demo || model.importingArchive)
+            Text(interest)
             Spacer()
-            Text("\(model.personalProfile.items.count) candidate materials")
-              .font(.caption).foregroundStyle(.secondary)
+            Button("Remove") { model.removeInterest(interest) }
+              .disabled(model.demo)
           }
-          if model.demo {
-            Button("Preview import review") { model.previewImportDemo() }
+        }
+        HStack {
+          TextField("Add an interest", text: $interestDraft)
+          Button("Add") {
+            model.addInterest(interestDraft)
+            interestDraft = ""
           }
-          Text(
-            "Obsidian \(model.personalProfile.items.filter { $0.source == .obsidian }.count) · X \(model.personalProfile.items.filter { $0.source == .x }.count) · YouTube \(model.personalProfile.items.filter { $0.source == .youtube }.count) · Books \(model.personalProfile.items.filter { $0.source == .books }.count)"
-          )
-          .font(.caption2).foregroundStyle(.secondary)
-          Divider()
-          Text("Interests to use").font(.subheadline.weight(.medium))
-          Text("Suggested words from titles are unverified. Add only topics that fit you.")
-            .font(.caption).foregroundStyle(.secondary)
-          ForEach(model.personalProfile.interests, id: \.self) { interest in
-            HStack {
-              Text(interest)
-              Spacer()
-              Button("Remove") { model.removeInterest(interest) }
-                .disabled(model.demo)
-            }
-          }
-          HStack {
-            TextField("Add an interest", text: $interestDraft)
-            Button("Add") {
-              model.addInterest(interestDraft)
-              interestDraft = ""
-            }
-            .disabled(
-              model.demo || interestDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-          }
+          .disabled(
+            model.demo || interestDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        DisclosureGroup("Suggestions from imported titles") {
           ScrollView(.horizontal) {
             HStack(spacing: 8) {
               ForEach(
@@ -517,154 +685,105 @@ private struct ObservationsView: View {
               }
             }
           }
-          Divider()
-          Text("Current goals").font(.subheadline.weight(.medium))
-          TextEditor(text: $goalsDraft)
-            .frame(minHeight: 76)
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
-            .accessibilityLabel("Current goals for personal evaluation")
-          HStack {
-            Text("Write what matters now. Archived interests are not treated as current goals.")
-              .font(.caption).foregroundStyle(.secondary)
-            Spacer()
-            Button("Save goals") { model.saveGoals(goalsDraft) }
-              .disabled(model.demo)
-          }
-          Divider()
-          Text("Calibrate with materials you know").font(.subheadline.weight(.medium))
-          Text(
-            "Rate at least two worthwhile and two not worthwhile examples. You can correct future pages from their menu."
-          )
-          .font(.caption).foregroundStyle(.secondary)
-          ForEach(model.personalProfile.calibrationCandidates) { item in
-            HStack(spacing: 8) {
-              Text(item.title).lineLimit(1).help(item.title)
-              Text(item.source.rawValue).font(.caption2).foregroundStyle(.secondary)
-              Spacer(minLength: 8)
-              Button("Worth it") { model.rate(item, as: .worthwhile) }
-              Button("Not worth it") { model.rate(item, as: .notWorthwhile) }
-            }
-            .controlSize(.small)
-          }
-          ForEach(
-            model.personalProfile.items.filter {
-              $0.source != .other && model.personalProfile.ratings[$0.id] != nil
-            }.prefix(10)
-          ) { item in
-            HStack(spacing: 8) {
-              Text(item.title).lineLimit(1).help(item.title)
-              Text(
-                model.personalProfile.ratings[item.id] == .worthwhile ? "Worth it" : "Not worth it"
-              )
-              .font(.caption).foregroundStyle(.secondary)
-              Spacer(minLength: 8)
-              Button("Change") {
-                model.rate(
-                  item,
-                  as: model.personalProfile.ratings[item.id] == .worthwhile
-                    ? .notWorthwhile : .worthwhile)
-              }
-              Button("Undo") { model.clearRating(item) }
-            }
-            .controlSize(.small)
-          }
-          Text(
-            "Rated: \(model.personalProfile.worthwhileExamples.count) worthwhile · \(model.personalProfile.notWorthwhileExamples.count) not worthwhile"
-          )
-          .font(.caption).foregroundStyle(.secondary)
-          Divider()
-          Toggle(
-            "Evaluate pages personally with Jev",
-            isOn: Binding(
-              get: { model.personalProfile.evaluationEnabled },
-              set: { model.setPersonalEvaluation($0) })
-          )
-          .disabled(
-            !model.personalProfile.evaluationEnabled
-              && (!model.personalProfile.readyForWorthJudgment || !model.jevEnabled))
-          Text(
-            "When enabled, Zevra sends a public page excerpt, your saved goals, up to 20 interests you selected and up to 8 examples of each rating to TypeSafe. Unrated archive titles and full notes are not sent to TypeSafe. The result is an estimate, not a measured probability of usefulness."
-          )
-          .font(.caption).foregroundStyle(.secondary)
-        }
 
-        settingsCard(
-          title: "Jev suggestions",
-          symbol: "sparkle",
-          subtitle: "A provisional follow-up after 10 seconds of active attention."
-        ) {
-          Toggle(
-            "Classify eligible pages with Jev",
-            isOn: Binding(get: { model.jevEnabled }, set: { model.setJevEnabled($0) })
-          )
-          .disabled(!model.hasJevKey)
-          Text(
-            "When enabled, Zevra fetches a public page excerpt and sends its title, domain and excerpt to TypeSafe. Private or excluded pages stay out. No old visits are sent when you turn it on."
-          )
-          .font(.caption).foregroundStyle(.secondary)
-          Divider()
-          HStack {
-            Label(
-              model.hasJevKey ? "TypeSafe key saved in Keychain" : "No TypeSafe key saved",
-              systemImage: model.hasJevKey ? "key.fill" : "key"
-            )
-            .font(.subheadline)
-            Spacer()
-            if model.hasJevKey {
-              Button("Remove key") { model.removeJevKey() }
-            }
-          }
-          HStack {
-            SecureField("Paste TypeSafe API key", text: $pendingKey)
-              .textFieldStyle(.roundedBorder)
-              .accessibilityLabel("TypeSafe API key")
-            Button(model.hasJevKey ? "Replace key" : "Save key") {
-              model.saveJevKey(pendingKey)
-              pendingKey = ""
-            }
-            .disabled(pendingKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-          }
-          Text("Suggestions may be uncertain. Your correction always takes precedence.")
-            .font(.caption).foregroundStyle(.secondary)
-        }
-
-        settingsCard(
-          title: "Capture",
-          symbol: "record.circle",
-          subtitle: "Save eligible Arc page URLs, titles and estimated active time."
-        ) {
-          HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
-              Text(model.accessibilityGranted ? "Accessibility enabled" : "Accessibility needed")
-                .font(.subheadline.weight(.medium))
-              Text("Used to identify the active Arc document.")
-                .font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button("Grant access…") { model.requestAccessibility() }
-              .disabled(model.accessibilityGranted)
-          }
-          Divider()
-          Toggle(
-            "Launch at login",
-            isOn: Binding(get: { model.loginEnabled }, set: { model.setLogin($0) }))
-          Text(model.loginStatus).font(.caption).foregroundStyle(.secondary)
-          Divider()
-          Text("Site rules").font(.subheadline.weight(.medium))
-          TextField("Allowed domains (optional)", text: $model.allowedDomains)
-          TextField("Excluded domains", text: $model.excludedDomains)
-          Text("Separate domains with commas. Built-in sensitive-site exclusions always apply.")
-            .font(.caption).foregroundStyle(.secondary)
-          HStack {
-            Spacer()
-            Button("Save site rules") { model.applyRules() }
-          }
         }
 
       }
-      .frame(maxWidth: 700)
-      .frame(maxWidth: .infinity)
-      .padding(24)
+      settingsSection("Examples for personal evaluation") {
+        Text(
+          "Rate at least two worthwhile and two not worthwhile examples. You can correct future pages from their menu."
+        )
+        .font(.callout).foregroundStyle(ZevraStyle.secondaryText)
+        ForEach(model.personalProfile.calibrationCandidates) { item in
+          HStack(spacing: 8) {
+            Text(item.title).lineLimit(1).help(item.title)
+            Text(item.source.rawValue).font(.callout).foregroundStyle(ZevraStyle.secondaryText)
+            Spacer(minLength: 8)
+            Button("Worth it") { model.rate(item, as: .worthwhile) }
+            Button("Not worth it") { model.rate(item, as: .notWorthwhile) }
+          }
+          .controlSize(.small)
+        }
+        ForEach(
+          model.personalProfile.items.filter {
+            $0.source != .other && model.personalProfile.ratings[$0.id] != nil
+          }.prefix(10)
+        ) { item in
+          HStack(spacing: 8) {
+            Text(item.title).lineLimit(1).help(item.title)
+            Text(
+              model.personalProfile.ratings[item.id] == .worthwhile ? "Worth it" : "Not worth it"
+            )
+            .font(.callout).foregroundStyle(ZevraStyle.secondaryText)
+            Spacer(minLength: 8)
+            Button("Change") {
+              model.rate(
+                item,
+                as: model.personalProfile.ratings[item.id] == .worthwhile
+                  ? .notWorthwhile : .worthwhile)
+            }
+            Button("Undo") { model.clearRating(item) }
+          }
+          .controlSize(.small)
+        }
+        Text(
+          "Rated: \(model.personalProfile.worthwhileExamples.count) worthwhile · \(model.personalProfile.notWorthwhileExamples.count) not worthwhile"
+        )
+        .font(.callout).foregroundStyle(ZevraStyle.secondaryText)
+
+        if model.personalProfile.items.isEmpty {
+          Text("Import some materials first, then rate examples you know.")
+          Button("Go to saved materials") { panel = .library }
+        }
+        Button("Configure AI suggestions") { panel = .suggestions }
+      }
+    }
+    .textFieldStyle(.roundedBorder)
+  }
+
+  private func settingsSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content)
+    -> some View
+  {
+    VStack(alignment: .leading, spacing: 12) {
+      Text(title).font(.headline).accessibilityAddTraits(.isHeader)
+      Divider()
+      content()
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private func chooseSource() {
+    if model.demo {
+      model.previewImportDemo()
+      return
+    }
+    let picker = NSOpenPanel()
+    picker.canChooseDirectories = true
+    picker.canChooseFiles = true
+    picker.allowsMultipleSelection = false
+    picker.prompt = "Review source"
+    if picker.runModal() == .OK, let source = picker.url { model.importArchive(source) }
+  }
+
+  private func chooseBase() {
+    guard !model.demo else { return }
+    let sourcePanel = NSOpenPanel()
+    sourcePanel.canChooseDirectories = true
+    sourcePanel.canChooseFiles = false
+    sourcePanel.allowsMultipleSelection = false
+    sourcePanel.message =
+      "Choose the notes folder to import from. Only notes inside this folder will be read."
+    sourcePanel.prompt = "Choose notes folder"
+    guard sourcePanel.runModal() == .OK, let source = sourcePanel.url else { return }
+    let basePanel = NSOpenPanel()
+    basePanel.canChooseDirectories = false
+    basePanel.canChooseFiles = true
+    basePanel.allowsMultipleSelection = false
+    basePanel.message =
+      "Choose a .base file to filter the selected notes folder. Unsupported conditions stop the import."
+    basePanel.prompt = "Review filtered notes"
+    if basePanel.runModal() == .OK, let base = basePanel.url {
+      reviewBase(source: source, base: base)
     }
   }
 
@@ -700,26 +819,71 @@ private struct ObservationsView: View {
     }
   }
 
-  private func settingsCard<Content: View>(
-    title: String, symbol: String, subtitle: String,
-    @ViewBuilder content: () -> Content
-  ) -> some View {
-    VStack(alignment: .leading, spacing: 14) {
-      HStack(alignment: .top, spacing: 12) {
-        Image(systemName: symbol)
-          .font(.system(size: 17))
-          .foregroundStyle(.secondary)
-          .frame(width: 28)
-        VStack(alignment: .leading, spacing: 3) {
-          Text(title).font(.headline)
-          Text(subtitle).font(.caption).foregroundStyle(.secondary)
-        }
-      }
-      Divider()
-      content()
+}
+
+// Opaque neutral text keeps secondary content readable in both appearances.
+private struct ZevraWindowSurface: ViewModifier {
+  @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+  @Environment(\.colorSchemeContrast) private var contrast
+
+  private var opaque: Bool { reduceTransparency || contrast == .increased }
+
+  func body(content: Content) -> some View {
+    if #available(macOS 15, *) {
+      surface(content).containerBackground(.clear, for: .window)
+    } else {
+      surface(content)
     }
-    .padding(20)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
   }
+
+  private func surface(_ content: Content) -> some View {
+    content.background {
+      WindowMaterial(opaque: opaque)
+        .overlay(Color(nsColor: .windowBackgroundColor).opacity(opaque ? 1 : 0.35))
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+  }
+}
+
+private struct WindowMaterial: NSViewRepresentable {
+  var opaque: Bool
+
+  func makeNSView(context: Context) -> SurfaceView {
+    let view = SurfaceView()
+    view.material = .underWindowBackground
+    view.blendingMode = .behindWindow
+    view.state = .followsWindowActiveState
+    view.opaqueSurface = opaque
+    return view
+  }
+
+  func updateNSView(_ view: SurfaceView, context: Context) {
+    view.opaqueSurface = opaque
+  }
+
+  final class SurfaceView: NSVisualEffectView {
+    var opaqueSurface = false {
+      didSet { configureWindow() }
+    }
+
+    override func viewDidMoveToWindow() {
+      super.viewDidMoveToWindow()
+      configureWindow()
+    }
+
+    private func configureWindow() {
+      window?.isOpaque = opaqueSurface
+      window?.backgroundColor = opaqueSurface ? .windowBackgroundColor : .clear
+    }
+  }
+}
+
+enum ZevraStyle {
+  static let secondaryText = Color(
+    nsColor: NSColor(name: nil) { appearance in
+      let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+      return NSColor(white: dark ? 0.76 : 0.34, alpha: 1)
+    })
 }
