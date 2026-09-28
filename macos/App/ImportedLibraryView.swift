@@ -4,6 +4,7 @@ import SwiftUI
 struct ImportedLibraryView: View {
   @ObservedObject var model: AppModel
   var chooseSource: () -> Void
+  var chooseBase: () -> Void
   @State private var search = ""
   @State private var source: ArchiveSource?
   @State private var editing: ArchiveItem?
@@ -13,27 +14,41 @@ struct ImportedLibraryView: View {
     VStack(alignment: .leading, spacing: 0) {
       HStack(alignment: .firstTextBaseline) {
         VStack(alignment: .leading, spacing: 4) {
-          Text("Library").font(.system(size: 24, weight: .semibold, design: .rounded))
+          Text("Saved materials").font(.title.weight(.semibold))
+          Text("Imported notes, bookmarks and pages you have rated.")
+            .font(.body).foregroundStyle(ZevraStyle.secondaryText)
           Text("\(items.count) of \(model.personalProfile.items.count) materials")
-            .font(.caption).foregroundStyle(.secondary)
+            .font(.caption).foregroundStyle(ZevraStyle.secondaryText)
         }
         Spacer()
-        Button("Import materials…", action: chooseSource)
+        Menu {
+          Button("From folder or export…", action: chooseSource)
+          Button("Filter notes with Obsidian Base…", action: chooseBase).disabled(model.demo)
+        } label: {
+          Label(
+            model.importingArchive ? "Importing…" : "Import…", systemImage: "square.and.arrow.down")
+        }
+        .disabled(model.importingArchive)
+        .menuStyle(.borderedButton)
+        .fixedSize()
       }
       .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 16)
 
       HStack(spacing: 12) {
         HStack(spacing: 8) {
-          Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-          TextField("Search titles, links or topics", text: $search)
-            .textFieldStyle(.plain).accessibilityLabel("Search library")
+          Image(systemName: "magnifyingglass").foregroundStyle(ZevraStyle.secondaryText)
+          TextField(
+            "Search titles, links or topics", text: $search,
+            prompt: Text("Search titles, links or topics").foregroundStyle(ZevraStyle.secondaryText)
+          )
+          .textFieldStyle(.plain).accessibilityLabel("Search saved materials")
           if !search.isEmpty {
             Button {
               search = ""
             } label: {
               Image(systemName: "xmark.circle.fill")
             }
-            .buttonStyle(.plain).accessibilityLabel("Clear library search")
+            .buttonStyle(.plain).accessibilityLabel("Clear material search")
           }
         }
         .padding(10)
@@ -50,7 +65,7 @@ struct ImportedLibraryView: View {
 
       if model.personalProfile.items.isEmpty {
         ContentUnavailableView {
-          Label("Build your library", systemImage: "books.vertical")
+          Label("Import your first materials", systemImage: "books.vertical")
         } description: {
           Text("Import notes or bookmarks, then review them before saving.")
         } actions: {
@@ -78,8 +93,8 @@ struct ImportedLibraryView: View {
       }
 
       Divider()
-      Text(model.demo ? "Demo · edits stay in memory" : "Imported materials · stored on this Mac")
-        .font(.caption).foregroundStyle(.secondary)
+      Text(model.demo ? "Demo · edits stay in memory" : "Saved materials · stored on this Mac")
+        .font(.caption).foregroundStyle(ZevraStyle.secondaryText)
         .padding(.horizontal, 24).padding(.vertical, 11)
     }
     .sheet(item: $editing) { item in
@@ -102,15 +117,16 @@ struct ImportedLibraryView: View {
           }
           if let topic = item.topic { Text(topic).lineLimit(1) }
         }
-        .font(.caption).foregroundStyle(.secondary)
+        .font(.caption).foregroundStyle(ZevraStyle.secondaryText)
         if let link = item.url {
-          Text(link).font(.caption).foregroundStyle(.secondary).lineLimit(1).help(link)
+          Text(link).font(.caption).foregroundStyle(ZevraStyle.secondaryText).lineLimit(1).help(
+            link)
           if !canOpen {
             Text("Link unavailable under current site rules")
-              .font(.caption).foregroundStyle(.secondary)
+              .font(.caption).foregroundStyle(ZevraStyle.secondaryText)
           }
         } else {
-          Text("No link added").font(.caption).foregroundStyle(.secondary)
+          Text("No link added").font(.caption).foregroundStyle(ZevraStyle.secondaryText)
         }
       }
       HStack(spacing: 8) {
@@ -145,28 +161,28 @@ private struct ArchiveMaterialEditor: View {
     VStack(alignment: .leading, spacing: 16) {
       Text("Edit material").font(.title2.weight(.semibold))
       Text("\(item.source.rawValue) · Your rating stays unchanged.")
-        .font(.callout).foregroundStyle(.secondary)
+        .font(.callout).foregroundStyle(ZevraStyle.secondaryText)
       VStack(alignment: .leading, spacing: 6) {
         Text("Title").font(.headline)
         TextEditor(text: $title).frame(height: 100)
           .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
           .accessibilityLabel("Saved material title")
         Text("\(title.trimmingCharacters(in: .whitespacesAndNewlines).count) / 240 characters")
-          .font(.caption).foregroundStyle(.secondary)
+          .font(.caption).foregroundStyle(ZevraStyle.secondaryText)
       }
       VStack(alignment: .leading, spacing: 6) {
         Text("Link (optional)").font(.headline)
         TextField("https://…", text: $link).accessibilityLabel("Saved material link")
         Text("Use a full HTTP or HTTPS link. Your site rules apply when saving and opening.")
-          .font(.caption).foregroundStyle(.secondary)
+          .font(.caption).foregroundStyle(ZevraStyle.secondaryText)
       }
       if let error {
         Label(error, systemImage: "exclamationmark.circle")
-          .foregroundStyle(.red).font(.callout).fixedSize(horizontal: false, vertical: true)
+          .foregroundStyle(.primary).font(.callout).fixedSize(horizontal: false, vertical: true)
       }
       HStack {
         if model.demo {
-          Text("Demo · not saved to disk").font(.caption).foregroundStyle(.secondary)
+          Text("Demo · not saved to disk").font(.caption).foregroundStyle(ZevraStyle.secondaryText)
         }
         Spacer()
         Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)

@@ -15,7 +15,7 @@ struct ImportReviewView: View {
           Text(draft.modelGenerated ? "Review model proposals" : "Review source")
             .font(.title2.weight(.semibold))
           Text("Nothing is saved until you approve. Edit or deselect any result.")
-            .font(.callout).foregroundStyle(.secondary)
+            .font(.callout).foregroundStyle(ZevraStyle.secondaryText)
         }
         Spacer()
         Button("Cancel") { model.cancelImport() }.keyboardShortcut(.cancelAction)
@@ -39,7 +39,8 @@ struct ImportReviewView: View {
                 Toggle("Include material", isOn: $material.selected).labelsHidden()
                   .accessibilityLabel("Include \(material.title)")
                 TextField("Title", text: $material.title).accessibilityLabel("Material title")
-                Text(material.original.source.rawValue).font(.caption).foregroundStyle(.secondary)
+                Text(material.original.source.rawValue).font(.caption).foregroundStyle(
+                  ZevraStyle.secondaryText)
               }
               TextField("Link (optional)", text: $material.link).accessibilityLabel("Material link")
               TextField("Topic (optional)", text: $material.topic).accessibilityLabel(
@@ -52,9 +53,9 @@ struct ImportReviewView: View {
             Divider()
             Text("Proposed interests").font(.headline)
             Text("Select only interests you want to add.").font(.caption).foregroundStyle(
-              .secondary)
+              ZevraStyle.secondaryText)
             if draft.interests.isEmpty {
-              Text("No interests proposed.").foregroundStyle(.secondary)
+              Text("No interests proposed.").foregroundStyle(ZevraStyle.secondaryText)
             }
             ForEach($draft.interests) { $suggestion in
               suggestionRow($suggestion)
@@ -64,9 +65,9 @@ struct ImportReviewView: View {
             Text(
               "Selected intentions will be appended to your current goals. Existing goals stay in place."
             )
-            .font(.caption).foregroundStyle(.secondary)
+            .font(.caption).foregroundStyle(ZevraStyle.secondaryText)
             if draft.intentions.isEmpty {
-              Text("No intentions proposed.").foregroundStyle(.secondary)
+              Text("No intentions proposed.").foregroundStyle(ZevraStyle.secondaryText)
             }
             ForEach($draft.intentions) { $suggestion in
               suggestionRow($suggestion)
@@ -84,7 +85,7 @@ struct ImportReviewView: View {
           Text(
             "Sends only the selected titles, links and source labels shown above to OpenAI (\(ModelImport.defaultModel)). No note bodies or existing profile are sent. API usage is billed to your OpenAI account. Up to 100 materials per analysis."
           )
-          .font(.caption).foregroundStyle(.secondary)
+          .font(.caption).foregroundStyle(ZevraStyle.secondaryText)
           HStack {
             if model.hasOpenAIKey {
               Label("OpenAI key saved on this Mac", systemImage: "key")
@@ -115,19 +116,21 @@ struct ImportReviewView: View {
         }
       }
       if let error = model.importError {
-        Text(error).foregroundStyle(.red).font(.callout).textSelection(.enabled)
+        Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.primary).font(
+          .callout
+        ).textSelection(.enabled)
       }
       HStack {
         Text(
           model.demo
             ? "Demo · synthetic data, saved in memory only" : "Approved results are saved locally."
         )
-        .font(.caption).foregroundStyle(.secondary)
+        .font(.caption).foregroundStyle(ZevraStyle.secondaryText)
         Spacer()
         Button(draft.modelGenerated ? "Save approved results" : "Import selected locally") {
           model.saveReviewedImport()
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.bordered)
         .disabled(model.analyzingImport)
       }
     }
@@ -149,7 +152,7 @@ struct ImportReviewView: View {
             \.original.title
           ).joined(separator: "; ")
       )
-      .font(.caption).foregroundStyle(.secondary)
+      .font(.caption).foregroundStyle(ZevraStyle.secondaryText)
     }
   }
 }
