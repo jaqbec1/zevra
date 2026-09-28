@@ -215,6 +215,43 @@ final class AppModel: ObservableObject {
     updateProfile(updated, using: personalProfileStore)
   }
 
+  func archiveURL(for item: ArchiveItem) -> URL? {
+    guard let link = item.url, let accepted = viewingPolicy.acceptedURL(link)
+    else { return nil }
+    return URL(string: accepted)
+  }
+
+  func openArchiveItem(_ item: ArchiveItem) {
+    guard let current = personalProfile.items.first(where: { $0.id == item.id }),
+      let url = archiveURL(for: current)
+    else {
+      notice = "This material has no available link under your current site rules."
+      return
+    }
+    if !NSWorkspace.shared.open(url) {
+      notice = "Could not open this link. Check your default browser and try again."
+    }
+  }
+
+  func saveArchiveItem(id: String, title: String, link: String) -> String? {
+    guard let personalProfileStore else {
+      return "The profile is unavailable. Your edit is not saved."
+    }
+    do {
+      let updated = try personalProfile.editingMaterial(
+        id: id, title: title, link: link, policy: viewingPolicy)
+      if updated.items == personalProfile.items { return nil }
+      guard updateProfile(updated, using: personalProfileStore) else {
+        let message = notice ?? "Could not save this material. Try again."
+        notice = nil
+        return message
+      }
+      return nil
+    } catch ModelImport.Failure.excludedLink {
+      return "This link is blocked by your current site rules. Change it or leave the link empty."
+    } catch { return error.localizedDescription }
+  }
+
   func rate(_ item: ArchiveItem, as rating: MaterialRating) {
     guard !demo, let personalProfileStore else { return }
     var updated = personalProfile

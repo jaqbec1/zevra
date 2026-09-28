@@ -46,9 +46,16 @@ private struct MenuContent: View {
 private struct ObservationsView: View {
   private enum Panel: String, CaseIterable {
     case library = "Library"
+    case visits = "Visits"
     case settings = "Settings"
 
-    var symbol: String { self == .library ? "square.stack" : "slider.horizontal.3" }
+    var symbol: String {
+      switch self {
+      case .library: "books.vertical"
+      case .visits: "clock"
+      case .settings: "slider.horizontal.3"
+      }
+    }
   }
 
   @ObservedObject var model: AppModel
@@ -124,9 +131,12 @@ private struct ObservationsView: View {
       .padding(.bottom, 12)
       Divider()
 
-      if panel == .library {
+      switch panel {
+      case .library:
+        ImportedLibraryView(model: model, chooseSource: { panel = .settings })
+      case .visits:
         library
-      } else {
+      case .settings:
         settings
       }
     }
@@ -162,7 +172,7 @@ private struct ObservationsView: View {
     VStack(alignment: .leading, spacing: 0) {
       HStack(alignment: .firstTextBaseline) {
         VStack(alignment: .leading, spacing: 4) {
-          Text("Saved materials").font(.system(size: 24, weight: .semibold, design: .rounded))
+          Text("Visits").font(.system(size: 24, weight: .semibold, design: .rounded))
           Text(
             "\(model.observations.count) \(model.observations.count == 1 ? "visit" : "visits") shown"
           )
@@ -184,7 +194,7 @@ private struct ObservationsView: View {
         Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
         TextField("Search titles or URLs", text: $model.searchText)
           .textFieldStyle(.plain)
-          .accessibilityLabel("Search saved materials")
+          .accessibilityLabel("Search visits")
         if !model.searchText.isEmpty {
           Button {
             model.searchText = ""
@@ -203,7 +213,7 @@ private struct ObservationsView: View {
 
       if model.observations.isEmpty {
         ContentUnavailableView(
-          isSearching ? "No matching materials" : "No saved materials yet",
+          isSearching ? "No matching visits" : "No visits yet",
           systemImage: isSearching ? "magnifyingglass" : "square.stack",
           description: Text(
             isSearching
