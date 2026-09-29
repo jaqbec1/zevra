@@ -88,11 +88,15 @@ final class AppModel: ObservableObject {
           for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
         )
         .appendingPathComponent("com.jamatyka.AttentionLog/observations.sqlite")
-      store = try ObservationStore(url: url, cloudContainer: cloudContainer)
+      let observations = try ObservationStore(url: url, cloudContainer: cloudContainer)
+      store = observations
       let classificationURL = url?.deletingLastPathComponent().appendingPathComponent(
         "classifications.json")
       do {
-        classificationStore = try ClassificationStore(url: classificationURL)
+        var viewingPolicy = policy
+        viewingPolicy.enabled = true
+        classificationStore = try ClassificationStore(
+          url: classificationURL, observations: observations, policy: viewingPolicy)
         classifications = classificationStore?.records ?? [:]
       } catch {
         notice = "Saved suggestions could not be read. Jev is paused until this is resolved."
@@ -156,6 +160,11 @@ final class AppModel: ObservableObject {
     policy = CapturePolicy(
       enabled: capturing, allowedDomains: CapturePolicy.domains(from: allowedDomains),
       excludedDomains: CapturePolicy.domains(from: excludedDomains))
+    let classificationsQueued: Bool
+    do {
+      try classificationStore?.setPolicy(viewingPolicy)
+      classificationsQueued = true
+    } catch { classificationsQueued = false }
     tracker.reset()
     for task in classificationTasks.values { task.cancel() }
     classificationTasks.removeAll()
@@ -164,7 +173,10 @@ final class AppModel: ObservableObject {
     personalTasks.removeAll()
     personalTaskIDs.removeAll()
     refresh()
-    notice = "Rules saved on this Mac. Existing records are retained; excluded pages are hidden."
+    notice =
+      classificationsQueued
+      ? "Rules saved on this Mac. Existing records are retained; excluded pages are hidden."
+      : "Rules saved, but classifications could not be queued for iCloud."
   }
 
   func setCapture(_ enabled: Bool) {
@@ -517,6 +529,9 @@ final class AppModel: ObservableObject {
     do {
       try classificationStore.update(record, for: pageURL)
       classifications = classificationStore.records
+      if classificationStore.syncPending {
+        notice = "Your choice was saved on this Mac; iCloud will retry."
+      }
     } catch {
       notice = "Could not save your correction. Please try again."
     }
@@ -866,7 +881,15 @@ final class AppModel: ObservableObject {
       NotificationCenter.default.addObserver(
         forName: .NSPersistentStoreRemoteChange, object: nil, queue: .main
       ) { [weak self] _ in
-        Task { @MainActor in self?.refresh() }
+        Task { @MainActor in
+          do {
+            try self?.classificationStore?.refreshFromCloud()
+            self?.classifications = self?.classificationStore?.records ?? [:]
+          } catch {
+            self?.notice = "Could not update synced classifications. Local data is retained."
+          }
+          self?.refresh()
+        }
       })
     subscriptions.append(
       NotificationCenter.default.addObserver(

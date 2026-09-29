@@ -22,7 +22,7 @@ In **Settings → Jev suggestions**, save a TypeSafe API key to this Mac's Keych
 
 After an eligible HTTPS page accumulates 10 active seconds across saved visits, Zevra fetches public HTML without Arc cookies or redirects. If it extracts at least 80 words, it sends the title, domain, and up to 2,000 characters of page text to TypeSafe's `jev-latest` Choice endpoint. This occurs while the page can still be open; switching away and closing are not triggers. It does not backfill older visits when Jev is enabled. Failed fetches and provider errors leave the visit intact and retry at most three times, at least five minutes apart. Exclusions are checked before fetching and before submitting. A result is reused for unchanged evidence; active pages may be rechecked after an hour for content changes.
 
-The row labels the provider suggestion and shows **Needs review** below 0.6 confidence. The ellipsis menu lets the user choose **Read deeper**, **Keep as reference**, or **No obvious follow-up**; a human choice takes precedence permanently. Suggestions and corrections live in a separate local `classifications.json` file with owner-only permissions, outside the CloudKit observation schema. The file contains page URLs and judgments, not the API key. The native app does not read the Bun collector database or run a digest. Model quality and a live provider response have not yet been verified for this build.
+The row labels the provider suggestion and shows **Needs review** below 0.6 confidence. The ellipsis menu lets the user choose **Read deeper**, **Keep as reference**, or **No obvious follow-up**; a human choice takes precedence over provider suggestions. The unreleased 0.3.2 source keeps `classifications.json` as a local cache and mirrors meaningful suggestion and human-correction changes as CloudKit-backed records. Existing local classifications are queued for migration when the new app opens. Page URLs and judgments sync; the API key remains in this Mac's Keychain. The native app does not read the Bun collector database or run a digest.
 
 ## Personal evaluation (0.3.0)
 
@@ -91,7 +91,7 @@ The settings disclosure uses a custom header with its focus effect disabled only
 
 All nine native tests, Swift formatting, the local build, the signed Cloud build, and the universal Release build passed. The installed Cloud app retained Accessibility permission. Targeted manual review and reuse/quality/efficiency review of the changed files found no further changes needed. Intel execution, Gatekeeper first launch on another Mac, notarization, and cross-device iCloud sync were not verified.
 
-`sh macos/package-preview.sh` creates an ad-hoc-signed universal ZIP and SHA-256 checksum in `macos/build/artifacts/`. It deliberately uses Release with iCloud disabled and no development provisioning profile. The public preview is unnotarized; Cloud distribution requires a separate distribution-signing/provisioning setup. Do not replace an iCloud development installation with the local-only preview if you want to keep syncing.
+`sh macos/package-preview.sh` creates an ad-hoc-signed universal ZIP and SHA-256 checksum in `macos/build/artifacts/`. It explicitly disables iCloud and clears the Release entitlements for this local preview. Cloud distribution requires a separate distribution-signing/provisioning setup. Do not replace an iCloud installation with the local-only preview if you want to keep syncing.
 
 Requires Xcode with the macOS SDK, Swift 6, and macOS 14 or later. The Xcode project is checked in; XcodeGen is needed only after editing `macos/project.yml`.
 
@@ -125,7 +125,7 @@ Each Mac writes distinct visit IDs; a cumulative checkpoint replaces the earlier
 
 ## iCloud build
 
-CloudKit uses the private database of the signed-in iCloud user. The native app's Core Data store has an explicit CloudKit configuration only in the **Cloud** build. There is no application server to run. CloudKit sync is asynchronous; the UI reports the last setup/import/export event, not proof that all devices have identical data.
+CloudKit uses the private database of the signed-in iCloud user. The native app's Core Data store has an explicit CloudKit configuration in the **Cloud** development build and the **Release** production build. There is no application server to run. CloudKit sync is asynchronous; the UI reports the last setup/import/export event, not proof that all devices have identical data.
 
 Create the gitignored `macos/Signing.local.xcconfig` with your personal team:
 
@@ -142,9 +142,9 @@ xcodebuild -project macos/AttentionLog.xcodeproj \
   -allowProvisioningDeviceRegistration build
 ```
 
-The cloud-enabled build synchronizes the native observation store, including previously collected local observations. It does not upload or migrate the old Bun database. Use the same app identity, CloudKit container/environment, and iCloud account on both Macs. Never copy a live SQLite store between machines or move it into iCloud Drive. Do not reset the local store to resolve an iCloud error.
+The cloud-enabled build synchronizes native observations, suggestions, and human corrections, including previously collected local records. The local JSON classification cache remains on each Mac; the TypeSafe API key, capture rules, capture switch, and macOS permissions do not sync. It does not upload or migrate the old Bun database. Use the same app identity, CloudKit container/environment, and iCloud account on both Macs. Never copy a live SQLite store between machines or move it into iCloud Drive. Do not reset the local store to resolve an iCloud error.
 
-For the first signed development build, initialize the development schema through Core Data's CloudKit setup and check setup/import/export events. Production schema deployment and distribution signing are separate release steps. Automatic updates, a release feed, shared capture rules, migration of old history, summaries, and retention/deletion UI are outside this first slice. Observations currently remain until the prototype's data is explicitly removed; do not use this build for unattended long-term capture yet.
+For the first signed development build, initialize the development schema through Core Data's CloudKit setup and check setup/import/export events. Version 0.3.2 adds the `ClassificationSnapshot` record type to that schema. Deploy the resulting schema to Production in CloudKit Console before distributing a Release build; schema deployment does not copy development records. The Release configuration uses `Production.entitlements` and requires a Developer ID provisioning profile for `com.jamatyka.AttentionLog` that permits the production iCloud container and push notifications. Sign, notarize, staple, and verify the final ZIP before replacing the public download. Automatic updates, a release feed, shared capture rules, migration of old history, summaries, and retention/deletion UI are outside this first slice. Observations currently remain until the prototype's data is explicitly removed; do not use this build for unattended long-term capture yet.
 
 ## Acceptance on two Macs
 

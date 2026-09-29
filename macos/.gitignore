@@ -2,5 +2,6 @@
 .swiftpm/
 build/
 build-cloud/
+build-release-icloud/
 *.xcodeproj/xcuserdata/
 Signing.local.xcconfig

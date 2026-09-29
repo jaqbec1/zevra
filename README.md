@@ -10,6 +10,8 @@ Requires macOS 14 or later; supports Apple Silicon and Intel. Unzip and move `Ze
 
 This download is **Developer ID–signed and Apple-notarized**. The notarization ticket is attached to the app. It stores data locally and does not include iCloud sync; separately provisioned development builds retain CloudKit support. A notarized iCloud distribution build is not yet available.
 
+The unreleased 0.3.2 source enables CloudKit in its Release configuration. The public 0.3.0 download remains local-only. The production CloudKit schema and a notarized distribution build are required before an iCloud-enabled download can replace it.
+
 Native setup and verification: [macOS documentation](docs/macos-prototype.md). To build a local preview, run `sh macos/check.sh` and `sh macos/package-preview.sh` with Xcode installed. Artifacts are written to `macos/build/artifacts/`. That script produces an ad-hoc-signed build; the public download additionally goes through Developer ID signing, Apple notarization, and ticket stapling before packaging.
 
 ## Original extension and collector

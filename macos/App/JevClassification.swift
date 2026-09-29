@@ -4,58 +4,6 @@ import Darwin
 import Foundation
 import Security
 
-enum FollowUp: String, CaseIterable, Codable, Identifiable {
-  case read = "Read deeper"
-  case keep = "Keep as reference"
-  case none = "No obvious follow-up"
-
-  var id: String { rawValue }
-}
-
-struct ClassificationRecord: Codable {
-  var title: String
-  var fingerprint: String?
-  var suggestion: FollowUp?
-  var confidence: Double?
-  var correction: FollowUp?
-  var status: String
-  var checkedAt: Date
-  var attemptCount: Int
-
-  var displayedChoice: FollowUp? { correction ?? suggestion }
-}
-
-@MainActor
-final class ClassificationStore {
-  private let url: URL?
-  private(set) var records: [String: ClassificationRecord]
-
-  init(url: URL?) throws {
-    self.url = url
-    if let url, FileManager.default.fileExists(atPath: url.path) {
-      records = try JSONDecoder().decode(
-        [String: ClassificationRecord].self, from: Data(contentsOf: url))
-    } else {
-      records = [:]
-    }
-  }
-
-  func record(for url: String) -> ClassificationRecord? { records[url] }
-
-  func update(_ record: ClassificationRecord, for pageURL: String) throws {
-    var updated = records
-    updated[pageURL] = record
-    if let url {
-      try FileManager.default.createDirectory(
-        at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
-        attributes: [.posixPermissions: 0o700])
-      try JSONEncoder().encode(updated).write(to: url, options: .atomic)
-      try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-    }
-    records = updated
-  }
-}
-
 struct APIKeyCredential {
   static let jev = APIKeyCredential(
     service: "com.jamatyka.AttentionLog.jev", account: "typesafe-api-key")

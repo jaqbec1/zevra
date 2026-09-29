@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 xcodebuild -quiet -project AttentionLog.xcodeproj -scheme AttentionLog \
   -configuration Release -destination 'generic/platform=macOS' \
   -derivedDataPath build/preview ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
-  CODE_SIGNING_ALLOWED=NO ATTENTION_CLOUD_ENABLED=NO build
+  CODE_SIGNING_ALLOWED=NO CODE_SIGN_ENTITLEMENTS= ATTENTION_CLOUD_ENABLED=NO build
 app=build/preview/Build/Products/Release/Zevra.app
 codesign --force --sign - --options runtime "$app"
 codesign --verify --deep --strict "$app"
