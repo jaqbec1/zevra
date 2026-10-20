@@ -180,3 +180,53 @@ func unreadableReturnQueueFailsClosedAndPreservesOriginalBytes(contents: String)
   }
   #expect(queue.entries == original)
 }
+
+@MainActor
+@Test(arguments: [ReturnAction.done, ReturnAction.letGo])
+func finishedReturnsSurviveReopeningAndRequireExplicitReactivation(action: ReturnAction) throws {
+  let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: directory) }
+  let url = directory.appendingPathComponent("return-queue.json")
+  let queue = ReturnQueue(url: url)
+  try queue.save(returnMaterial, policy: returnPolicy)
+  let id = try #require(queue.entries.first?.id)
+  try queue.apply(action, to: id, policy: returnPolicy)
+  let finished = queue.entries
+  let bytes = try Data(contentsOf: url)
+  try queue.save(returnMaterial, reason: "Duplicate", policy: returnPolicy)
+  #expect(try Data(contentsOf: url) == bytes)
+  #expect(throws: ReturnQueueError.finishedEntry) {
+    try queue.apply(
+      .later(savedTime.addingTimeInterval(100)), to: id, policy: returnPolicy,
+      now: savedTime)
+  }
+  let reopened = ReturnQueue(url: url)
+  #expect(reopened.entries == finished)
+  #expect(reopened.entries[0].state.group(at: Date()) == .finished)
+  try reopened.apply(.returnAgain, to: id, policy: returnPolicy)
+  #expect(reopened.entries[0].state == .active)
+}
+
+@MainActor
+@Test func duplicateOrInvalidStoredIdentityFailsClosedWithoutSalvagingPromises() throws {
+  let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: directory) }
+  let url = directory.appendingPathComponent("return-queue.json")
+  let queue = ReturnQueue(url: url)
+  try queue.save(returnMaterial, policy: returnPolicy)
+  let bytes = try Data(contentsOf: url)
+  var document = try #require(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+  let entries = try #require(document["entries"] as? [[String: Any]])
+  document["entries"] = entries + entries
+  let duplicated = try JSONSerialization.data(withJSONObject: document)
+  try duplicated.write(to: url)
+  #expect(ReturnQueue(url: url).availability == .unavailable)
+  #expect(try Data(contentsOf: url) == duplicated)
+  var invalidEntry = entries[0]
+  invalidEntry["id"] = "archive:wrong-identity"
+  document["entries"] = [invalidEntry]
+  let invalid = try JSONSerialization.data(withJSONObject: document)
+  try invalid.write(to: url)
+  #expect(ReturnQueue(url: url).availability == .unavailable)
+  #expect(try Data(contentsOf: url) == invalid)
+}

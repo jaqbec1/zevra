@@ -143,3 +143,28 @@ public enum ReturnSelection {
     return Array(eligible.filter { seen.insert($0.url).inserted }.prefix(3))
   }
 }
+
+extension PersonalProfile {
+  public func ratedPageURLs(
+    among candidates: Set<String> = [], ratedAs rating: MaterialRating? = nil, policy: CapturePolicy
+  ) -> Set<String> {
+    func matches(_ value: MaterialRating?) -> Bool {
+      guard let value else { return false }
+      return rating == nil || value == rating
+    }
+    var result = Set(
+      pageRatings.compactMap { url, value in
+        matches(value) ? policy.acceptedURL(url) : nil
+      })
+    for item in items where matches(ratings[item.id]) {
+      if let raw = item.url, let url = policy.acceptedURL(raw) { result.insert(url) }
+    }
+    // Rated visits historically have no URL field, but their exact identity is known.
+    for raw in candidates {
+      guard let url = policy.acceptedURL(raw) else { continue }
+      let aliases = [raw, url].map { ArchiveItem(title: "", source: .other, identity: $0).id }
+      if aliases.contains(where: { matches(ratings[$0]) }) { result.insert(url) }
+    }
+    return result
+  }
+}

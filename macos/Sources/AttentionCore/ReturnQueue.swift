@@ -83,9 +83,13 @@ public final class ReturnQueue {
       guard entry.isPermitted(by: policy) else { throw ReturnQueueError.excludedURL }
       let state: ReturnState
       switch action {
-      case .done: state = .completed
+      case .done:
+        if entry.state == .completed { return }
+        guard entry.state != .letGo else { throw ReturnQueueError.finishedEntry }
+        state = .completed
       case .returnAgain: state = .active
       case .later(let until):
+        guard entry.state.group(at: now) != .finished else { throw ReturnQueueError.finishedEntry }
         guard until.timeIntervalSinceReferenceDate.isFinite, until > now else {
           throw ReturnQueueError.invalidDate
         }

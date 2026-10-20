@@ -114,6 +114,7 @@ public enum ReturnQueueError: Error, Equatable, LocalizedError {
   case excludedURL
   case invalidMaterial
   case invalidDate
+  case finishedEntry
   case unsupportedData
   case writeFailed
 
@@ -123,6 +124,7 @@ public enum ReturnQueueError: Error, Equatable, LocalizedError {
     case .excludedURL: "This material is unavailable under your current site rules."
     case .invalidMaterial: "This material has no stable identity. Nothing was saved."
     case .invalidDate: "Choose a date in the future."
+    case .finishedEntry: "Use Return again to reactivate a finished return."
     case .unsupportedData:
       "The saved return queue could not be read. Its original data is retained."
     case .writeFailed: "Could not save returns. Previous data is unchanged. Try again."

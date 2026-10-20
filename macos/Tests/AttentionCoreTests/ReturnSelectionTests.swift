@@ -165,3 +165,25 @@ func ineligibleEstimatesAreFilteredAlongsideAnEligibleControl(failure: String) {
       ratedURLs: [], entries: [], policy: denied
     ).isEmpty)
 }
+
+@Test func knownArchiveAndRatedVisitAliasesSuppressEstimatesWithEitherHumanRating() {
+  var imported = ArchiveItem(title: "An imported alias", source: .obsidian)
+  imported.url = eligibleEstimate(0).url + "?utm_source=archive#part"
+  let ratedVisit = ArchiveItem(
+    title: "A rated visit", source: .other, identity: eligibleEstimate(1).url)
+  let profile = PersonalProfile(
+    items: [imported, ratedVisit],
+    ratings: [imported.id: .worthwhile, ratedVisit.id: .notWorthwhile])
+  let candidates = (0..<3).map(eligibleEstimate)
+  let rated = profile.ratedPageURLs(among: Set(candidates.map(\.url)), policy: selectionPolicy)
+  #expect(rated == [eligibleEstimate(0).url, eligibleEstimate(1).url])
+  #expect(
+    profile.ratedPageURLs(
+      among: Set(candidates.map(\.url)), ratedAs: .notWorthwhile,
+      policy: selectionPolicy) == [eligibleEstimate(1).url])
+  #expect(
+    ReturnSelection.estimates(
+      candidates, enabled: true, profileRevision: "current",
+      ratedURLs: rated, entries: [], policy: selectionPolicy
+    ).map(\.url) == [eligibleEstimate(2).url])
+}
