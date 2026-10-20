@@ -187,3 +187,33 @@ func ineligibleEstimatesAreFilteredAlongsideAnEligibleControl(failure: String) {
       ratedURLs: rated, entries: [], policy: selectionPolicy
     ).map(\.url) == [eligibleEstimate(2).url])
 }
+
+@MainActor
+@Test func unreadableProfileFeaturesNothingAndMakesNoClaimsUnlikeKnownEmptyProfile() throws {
+  let queue = ReturnQueue(url: nil)
+  try queue.save(
+    ReturnMaterial(title: "Rejected notes", archiveID: "rejected"), goal: "Ship the parser",
+    policy: selectionPolicy, now: selectionTime)
+  let known = ReturnContext()
+  let knownCards = ReturnSelection.all(queue.entries, context: known, policy: selectionPolicy)
+  guard case .available(let knownCard) = knownCards[0] else {
+    Issue.record("An allowed return must remain visible")
+    return
+  }
+  #expect(knownCard.earlierGoal && knownCard.sourceRemoved)
+  #expect(
+    ReturnSelection.ready(
+      queue.entries, context: known, policy: selectionPolicy, now: selectionTime
+    )
+    .count == 1)
+
+  let unknownCards = ReturnSelection.all(queue.entries, context: nil, policy: selectionPolicy)
+  guard case .available(let unknownCard) = unknownCards[0] else {
+    Issue.record("Returns must stay reachable while the profile is unreadable")
+    return
+  }
+  #expect(!unknownCard.earlierGoal && !unknownCard.sourceRemoved && !unknownCard.negativeFeedback)
+  #expect(
+    ReturnSelection.ready(queue.entries, context: nil, policy: selectionPolicy, now: selectionTime)
+      .isEmpty)
+}

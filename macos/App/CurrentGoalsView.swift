@@ -14,9 +14,12 @@ struct CurrentGoalsView: View {
         HStack(alignment: .firstTextBaseline) {
           Text("Current goals").font(.largeTitle.weight(.semibold))
           Spacer()
-          Button("Edit goals", action: editGoals)
+          Button("Edit goals", action: editGoals).disabled(!model.profileAvailable)
         }
-        if model.returnGoalLines.isEmpty {
+        if !model.profileAvailable {
+          Text("Your goals could not be read. Saved data has not been replaced.")
+            .foregroundStyle(ZevraStyle.secondaryText)
+        } else if model.returnGoalLines.isEmpty {
           VStack(alignment: .leading, spacing: 10) {
             Text("What would you like to make room for?").font(.title3.weight(.medium))
             Text(
@@ -37,11 +40,19 @@ struct CurrentGoalsView: View {
           HStack(alignment: .firstTextBaseline) {
             Text("Your returns").font(.title2.weight(.semibold))
             Spacer()
-            Button("See all returns (\(model.returnEntries.count))", action: showReturns)
+            Button(
+              model.returnsAvailability == .available
+                ? "See all returns (\(model.returnEntries.count))" : "See all returns",
+              action: showReturns)
           }
           if model.returnsAvailability == .available {
             let ready = model.readyReturns
-            if ready.isEmpty {
+            if !model.profileAvailable {
+              Text(
+                "Returns are not featured here while your profile cannot be read, so earlier feedback is respected. All returns remain available."
+              )
+              .foregroundStyle(ZevraStyle.secondaryText)
+            } else if ready.isEmpty {
               Text(
                 "No returns to feature now. Save something with Return to this, or visit all returns to see later and finished items."
               )

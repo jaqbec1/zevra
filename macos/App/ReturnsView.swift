@@ -8,12 +8,17 @@ struct ReturnsView: View {
   var body: some View {
     let all = model.allReturns
     let visible = all.filter { $0.state.group(at: model.returnNow) == group }
+    let available = model.returnsAvailability == .available
     VStack(alignment: .leading, spacing: 0) {
       HStack(alignment: .firstTextBaseline) {
         VStack(alignment: .leading, spacing: 6) {
           Text("Returns").font(.title.weight(.semibold))
-          Text("\(all.count) saved · Opening a material keeps its status unchanged.")
-            .foregroundStyle(ZevraStyle.secondaryText)
+          Text(
+            available
+              ? "\(all.count) saved · Opening a material keeps its status unchanged."
+              : "Saved returns could not be read."
+          )
+          .foregroundStyle(ZevraStyle.secondaryText)
         }
         Spacer()
         Button("Refresh", systemImage: "arrow.clockwise") { model.refreshReturns() }
@@ -22,12 +27,12 @@ struct ReturnsView: View {
       Picker("Return status", selection: $group) {
         ForEach(ReturnGroup.allCases, id: \.self) { value in
           let count = all.filter { $0.state.group(at: model.returnNow) == value }.count
-          Text("\(value.rawValue) (\(count))").tag(value)
+          Text(available ? "\(value.rawValue) (\(count))" : value.rawValue).tag(value)
         }
       }
       .pickerStyle(.segmented)
       .padding(.horizontal, 24).padding(.bottom, 16)
-      if model.returnsAvailability == .available {
+      if available {
         if visible.isEmpty {
           ContentUnavailableView(
             "No \(group.rawValue.lowercased()) returns", systemImage: "bookmark",

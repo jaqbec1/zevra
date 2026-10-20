@@ -84,12 +84,18 @@ public struct JevEstimateSnapshot: Identifiable, Sendable {
 }
 
 public enum ReturnSelection {
+  /// A nil context means the profile is unreadable, so cards make no goal, source, or feedback claim.
   public static func all(
-    _ entries: [ReturnEntry], context: ReturnContext, policy: CapturePolicy
+    _ entries: [ReturnEntry], context: ReturnContext?, policy: CapturePolicy
   ) -> [ReturnPresentation] {
     entries.map { entry in
       guard entry.isPermitted(by: policy) else {
         return .restricted(id: entry.id, state: entry.state)
+      }
+      guard let context else {
+        return .available(
+          ReturnCard(
+            entry: entry, earlierGoal: false, sourceRemoved: false, negativeFeedback: false))
       }
       let negative =
         entry.archiveID.map { context.negativeArchiveIDs.contains($0) } == true
@@ -103,9 +109,10 @@ public enum ReturnSelection {
   }
 
   public static func ready(
-    _ entries: [ReturnEntry], context: ReturnContext, policy: CapturePolicy, now: Date
+    _ entries: [ReturnEntry], context: ReturnContext?, policy: CapturePolicy, now: Date
   ) -> [ReturnCard] {
-    all(entries, context: context, policy: policy).compactMap { presentation in
+    guard context != nil else { return [] }
+    return all(entries, context: context, policy: policy).compactMap { presentation in
       guard case .available(let card) = presentation,
         card.entry.state.group(at: now) == .ready, !card.negativeFeedback
       else { return nil }

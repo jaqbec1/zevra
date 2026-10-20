@@ -88,32 +88,26 @@ final class AppModel: ObservableObject {
     }
     retryReturns()
     do {
-      let url =
-        demo
-        ? nil
-        : try FileManager.default.url(
-          for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
-        )
-        .appendingPathComponent("com.jamatyka.AttentionLog/observations.sqlite")
-      store = try ObservationStore(url: url, cloudContainer: cloudContainer)
-      let classificationURL = url?.deletingLastPathComponent().appendingPathComponent(
-        "classifications.json")
+      personalProfileStore = try PersonalProfileStore(url: supportURL("personal-profile.json"))
+      personalProfile = personalProfileStore?.profile ?? PersonalProfile()
+    } catch {
+      notice = "Personal profile could not be read. Personal evaluation is paused."
+    }
+    do {
+      personalEvaluationStore = try PersonalEvaluationStore(
+        url: supportURL("personal-evaluations.json"))
+      personalEvaluations = personalEvaluationStore?.records ?? [:]
+    } catch {
+      notice = "Personal evaluations could not be read. Personal evaluation is paused."
+    }
+    do {
+      store = try ObservationStore(
+        url: supportURL("observations.sqlite"), cloudContainer: cloudContainer)
       do {
-        classificationStore = try ClassificationStore(url: classificationURL)
+        classificationStore = try ClassificationStore(url: supportURL("classifications.json"))
         classifications = classificationStore?.records ?? [:]
       } catch {
         notice = "Saved suggestions could not be read. Jev is paused until this is resolved."
-      }
-      do {
-        let base = url?.deletingLastPathComponent()
-        personalProfileStore = try PersonalProfileStore(
-          url: base?.appendingPathComponent("personal-profile.json"))
-        personalEvaluationStore = try PersonalEvaluationStore(
-          url: base?.appendingPathComponent("personal-evaluations.json"))
-        personalProfile = personalProfileStore?.profile ?? PersonalProfile()
-        personalEvaluations = personalEvaluationStore?.records ?? [:]
-      } catch {
-        notice = "Personal profile could not be read. Personal evaluation is paused."
       }
       if demo { try loadDemo() }
       refresh()
@@ -225,8 +219,11 @@ final class AppModel: ObservableObject {
 
   var returnGoalLines: [String] { ReturnContext.lines(in: personalProfile.goals) }
 
-  private var returnContext: ReturnContext {
-    ReturnContext(
+  var profileAvailable: Bool { personalProfileStore != nil }
+
+  private var returnContext: ReturnContext? {
+    guard profileAvailable else { return nil }
+    return ReturnContext(
       goalLines: returnGoalLines, archiveIDs: Set(personalProfile.items.map(\.id)),
       negativeArchiveIDs: Set(personalProfile.ratings.filter { $0.value == .notWorthwhile }.keys),
       negativeURLs: ratedURLs(as: .notWorthwhile))
@@ -270,14 +267,7 @@ final class AppModel: ObservableObject {
       returnQueue.reload()
     } else {
       do {
-        let url =
-          demo
-          ? nil
-          : try FileManager.default.url(
-            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil,
-            create: true
-          ).appendingPathComponent("com.jamatyka.AttentionLog/return-queue.json")
-        returnQueue = ReturnQueue(url: url)
+        returnQueue = ReturnQueue(url: try supportURL("return-queue.json"))
       } catch {
         returnsAvailability = .unavailable
       }
@@ -286,6 +276,13 @@ final class AppModel: ObservableObject {
   }
 
   func refreshReturns() { returnNow = Date() }
+
+  private func supportURL(_ name: String) throws -> URL? {
+    guard !demo else { return nil }
+    return try FileManager.default.url(
+      for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
+    ).appendingPathComponent("com.jamatyka.AttentionLog/\(name)")
+  }
 
   private func publishReturns() {
     returnEntries = returnQueue?.entries ?? []
