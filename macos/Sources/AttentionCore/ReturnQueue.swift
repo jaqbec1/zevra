@@ -170,7 +170,6 @@ public final class ReturnQueue {
         try? handle.close()
         throw error
       }
-      // Nothing fallible follows the atomic replacement before publishing the new value.
       guard Darwin.rename(temporary.path, url.path) == 0 else {
         throw ReturnQueueError.writeFailed
       }

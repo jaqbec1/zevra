@@ -159,7 +159,6 @@ extension PersonalProfile {
     for item in items where matches(ratings[item.id]) {
       if let raw = item.url, let url = policy.acceptedURL(raw) { result.insert(url) }
     }
-    // Rated visits historically have no URL field, but their exact identity is known.
     for raw in candidates {
       guard let url = policy.acceptedURL(raw) else { continue }
       let aliases = [raw, url].map { ArchiveItem(title: "", source: .other, identity: $0).id }

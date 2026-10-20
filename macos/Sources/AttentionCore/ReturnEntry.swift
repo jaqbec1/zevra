@@ -48,7 +48,6 @@ public struct ReturnEntry: Codable, Equatable, Identifiable, Sendable {
   init(material: ReturnMaterial, reason: String?, goal: String?, policy: CapturePolicy, now: Date)
     throws
   {
-    // Check the supplied URL before removing tracking fields or fragments.
     if let raw = material.rawURL {
       guard let accepted = policy.acceptedURL(raw) else { throw ReturnQueueError.excludedURL }
       url = accepted
