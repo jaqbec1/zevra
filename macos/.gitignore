@@ -1,4 +1,5 @@
 .build/
+build-guidance-preview/
 .swiftpm/
 build/
 build-cloud/

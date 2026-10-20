@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        C0DE00000000000000000009 /* ReturnEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE0000000000000000000A /* ReturnEditor.swift */; };
+        C0DE00000000000000000007 /* ReturnsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000008 /* ReturnsView.swift */; };
+        C0DE00000000000000000005 /* CurrentGoalsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000006 /* CurrentGoalsView.swift */; };
         C0DE00000000000000000001 /* ImportReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000002 /* ImportReviewView.swift */; };
         C0DE00000000000000000003 /* ImportedLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000004 /* ImportedLibraryView.swift */; };
 		8479DD8D2D8255FA01C2ACD8 /* JevClassification.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9B18DA3D53D440D1812B343 /* JevClassification.swift */; };
@@ -18,6 +21,9 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+        C0DE0000000000000000000A /* ReturnEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReturnEditor.swift; sourceTree = "<group>"; };
+        C0DE00000000000000000008 /* ReturnsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReturnsView.swift; sourceTree = "<group>"; };
+        C0DE00000000000000000006 /* CurrentGoalsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrentGoalsView.swift; sourceTree = "<group>"; };
         C0DE00000000000000000002 /* ImportReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportReviewView.swift; sourceTree = "<group>"; };
         C0DE00000000000000000004 /* ImportedLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportedLibraryView.swift; sourceTree = "<group>"; };
 		2FD0D65F25B4DC3654D8ED03 /* AttentionLog.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AttentionLog.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -56,6 +62,9 @@
 		89DFD9C8D94791BD310F83EA /* App */ = {
 			isa = PBXGroup;
 			children = (
+                C0DE00000000000000000006 /* CurrentGoalsView.swift */,
+                C0DE00000000000000000008 /* ReturnsView.swift */,
+                C0DE0000000000000000000A /* ReturnEditor.swift */,
                 C0DE00000000000000000002 /* ImportReviewView.swift */,
                 C0DE00000000000000000004 /* ImportedLibraryView.swift */,
 				45E7B40496CF504B77293F1C /* AppModel.swift */,
@@ -159,6 +168,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+                C0DE00000000000000000005 /* CurrentGoalsView.swift in Sources */,
+                C0DE00000000000000000007 /* ReturnsView.swift in Sources */,
+                C0DE00000000000000000009 /* ReturnEditor.swift in Sources */,
                 C0DE00000000000000000001 /* ImportReviewView.swift in Sources */,
                 C0DE00000000000000000003 /* ImportedLibraryView.swift in Sources */,
 				DB1577B7433E0219E93AFEA3 /* AppModel.swift in Sources */,

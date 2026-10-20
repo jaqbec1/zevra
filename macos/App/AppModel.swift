@@ -32,6 +32,12 @@ final class AppModel: ObservableObject {
   @Published private(set) var personalProfile = PersonalProfile()
   @Published private(set) var personalEvaluations: [String: PersonalEvaluation] = [:]
   @Published private(set) var importingArchive = false
+  @Published private(set) var returnEntries: [ReturnEntry] = []
+  @Published private(set) var returnsAvailability: ReturnQueue.Availability = .unavailable
+  @Published private(set) var returnNow = Date()
+  @Published var returnMessage: String?
+  @Published var returnDraft: ReturnMaterial?
+  private var returnQueue: ReturnQueue?
 
   @Published var importDraft: ImportDraft?
   @Published private(set) var analyzingImport = false
@@ -80,6 +86,7 @@ final class AppModel: ObservableObject {
           Bundle.main.object(forInfoDictionaryKey: "AttentionCloudContainer") as? String
       }
     }
+    retryReturns()
     do {
       let url =
         demo
@@ -141,7 +148,6 @@ final class AppModel: ObservableObject {
   }
 
   func applyRules() {
-    guard !demo else { return }
     guard CapturePolicy.invalidDomains(from: allowedDomains).isEmpty,
       CapturePolicy.invalidDomains(from: excludedDomains).isEmpty
     else {
@@ -151,8 +157,10 @@ final class AppModel: ObservableObject {
     }
     allowedDomains = CapturePolicy.domains(from: allowedDomains).joined(separator: ", ")
     excludedDomains = CapturePolicy.domains(from: excludedDomains).joined(separator: ", ")
-    defaults.set(allowedDomains, forKey: "allowedDomains")
-    defaults.set(excludedDomains, forKey: "excludedDomains")
+    if !demo {
+      defaults.set(allowedDomains, forKey: "allowedDomains")
+      defaults.set(excludedDomains, forKey: "excludedDomains")
+    }
     policy = CapturePolicy(
       enabled: capturing, allowedDomains: CapturePolicy.domains(from: allowedDomains),
       excludedDomains: CapturePolicy.domains(from: excludedDomains))
@@ -209,10 +217,199 @@ final class AppModel: ObservableObject {
   }
 
   func saveGoals(_ text: String) {
-    guard !demo, let personalProfileStore else { return }
+    guard let personalProfileStore else { return }
     var updated = personalProfile
     updated.goals = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1_000))
     updateProfile(updated, using: personalProfileStore)
+  }
+
+  var returnGoalLines: [String] { ReturnContext.lines(in: personalProfile.goals) }
+
+  private var returnContext: ReturnContext {
+    ReturnContext(
+      goalLines: returnGoalLines, archiveIDs: Set(personalProfile.items.map(\.id)),
+      negativeArchiveIDs: Set(personalProfile.ratings.filter { $0.value == .notWorthwhile }.keys),
+      negativeURLs: ratedURLs(as: .notWorthwhile))
+  }
+
+  var allReturns: [ReturnPresentation] {
+    ReturnSelection.all(returnEntries, context: returnContext, policy: viewingPolicy)
+  }
+
+  var readyReturns: [ReturnCard] {
+    ReturnSelection.ready(
+      returnEntries, context: returnContext, policy: viewingPolicy, now: returnNow)
+  }
+
+  var canUndoReturn: Bool { returnQueue?.canUndo(policy: viewingPolicy) == true }
+  var hasReturnUndo: Bool { returnQueue?.undoID != nil }
+
+  var jevEstimates: [JevEstimateSnapshot] {
+    guard returnsAvailability == .available else { return [] }
+    let candidates = personalEvaluations.map { url, value in
+      JevEstimateSnapshot(
+        url: url, title: value.title, profileRevision: value.profileRevision,
+        status: value.status == "Personal evaluation" ? .personalEvaluation : .unavailable,
+        worth: value.worth, interestFit: value.interestFit, goalFit: value.goalFit,
+        confidence: value.confidence, basis: value.basis?.explanation)
+    }
+    return ReturnSelection.estimates(
+      candidates, enabled: personalProfile.evaluationEnabled,
+      profileRevision: personalProfile.revision, ratedURLs: ratedURLs(),
+      entries: returnEntries, policy: viewingPolicy)
+  }
+
+  private func ratedURLs(as rating: MaterialRating? = nil) -> Set<String> {
+    personalProfile.ratedPageURLs(
+      among: Set(personalEvaluations.keys).union(returnEntries.compactMap(\.url)),
+      ratedAs: rating, policy: viewingPolicy)
+  }
+
+  func retryReturns() {
+    if let returnQueue {
+      returnQueue.reload()
+    } else {
+      do {
+        let url =
+          demo
+          ? nil
+          : try FileManager.default.url(
+            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil,
+            create: true
+          ).appendingPathComponent("com.jamatyka.AttentionLog/return-queue.json")
+        returnQueue = ReturnQueue(url: url)
+      } catch {
+        returnsAvailability = .unavailable
+      }
+    }
+    publishReturns()
+  }
+
+  func refreshReturns() { returnNow = Date() }
+
+  private func publishReturns() {
+    returnEntries = returnQueue?.entries ?? []
+    returnsAvailability = returnQueue?.availability ?? .unavailable
+    refreshReturns()
+  }
+
+  func canReturn(_ material: ReturnMaterial) -> Bool {
+    if let raw = material.rawURL { return viewingPolicy.acceptedURL(raw) != nil }
+    return material.archiveID?.isEmpty == false
+  }
+
+  func beginReturn(_ material: ReturnMaterial) {
+    guard canReturn(material) else {
+      returnMessage = "This material is unavailable under your current site rules."
+      return
+    }
+    returnDraft = material
+  }
+
+  func saveReturn(_ material: ReturnMaterial, reason: String, goal: String?) -> String? {
+    guard let returnQueue else { return ReturnQueueError.unavailable.localizedDescription }
+    do {
+      let result = try returnQueue.save(material, reason: reason, goal: goal, policy: viewingPolicy)
+      publishReturns()
+      switch result {
+      case .saved:
+        returnMessage = demo ? "Return saved in demo memory." : "Return saved on this Mac."
+      case .existing:
+        returnMessage =
+          "Already in Returns. Its reason and status are unchanged. Use Return again to reactivate."
+      }
+      return nil
+    } catch {
+      return (error as? ReturnQueueError)?.localizedDescription
+        ?? "Could not save this return. Your draft is still available."
+    }
+  }
+
+  @discardableResult
+  func changeReturn(_ id: String, to action: ReturnAction) -> String? {
+    guard let returnQueue else { return ReturnQueueError.unavailable.localizedDescription }
+    do {
+      try returnQueue.apply(action, to: id, policy: viewingPolicy)
+      publishReturns()
+      returnMessage = "Return updated."
+      return nil
+    } catch {
+      let message =
+        (error as? ReturnQueueError)?.localizedDescription ?? "Could not update this return."
+      returnMessage = message
+      return message
+    }
+  }
+
+  func undoReturn() {
+    guard let returnQueue, let id = returnQueue.undoID else { return }
+    do {
+      let restored = try returnQueue.undo(id, policy: viewingPolicy)
+      publishReturns()
+      returnMessage =
+        restored ? "Return change undone." : "Undo is unavailable under current site rules."
+    } catch {
+      returnMessage = "Could not undo this change. Previous data is unchanged. Try again."
+    }
+  }
+
+  func openReturn(_ id: String) {
+    guard let entry = returnEntries.first(where: { $0.id == id }),
+      entry.isPermitted(by: viewingPolicy), let raw = entry.url,
+      let accepted = viewingPolicy.acceptedURL(raw), let url = URL(string: accepted)
+    else {
+      returnMessage = "This return has no available link under your current site rules."
+      return
+    }
+    if !NSWorkspace.shared.open(url) { returnMessage = "Could not open this link. Try again." }
+  }
+
+  func rejectEstimate(_ estimate: JevEstimateSnapshot) {
+    guard let current = jevEstimates.first(where: { $0.url == estimate.url }) else { return }
+    ratePage(title: current.title, url: current.url, as: .notWorthwhile)
+  }
+
+  func previewEmptyHome() {
+    guard demo, let personalProfileStore else { return }
+    returnQueue = ReturnQueue(url: nil)
+    returnDraft = nil
+    returnMessage = nil
+    _ = updateProfile(PersonalProfile(), using: personalProfileStore)
+    publishReturns()
+  }
+
+  func previewResetGuidance() {
+    guard demo else { return }
+    do {
+      store = try ObservationStore(url: nil)
+      returnQueue = ReturnQueue(url: nil)
+      returnDraft = nil
+      returnMessage = nil
+      allowedDomains = ""
+      excludedDomains = ""
+      policy = CapturePolicy()
+      try loadDemo()
+      publishReturns()
+      refresh()
+    } catch { returnMessage = "Could not reset the synthetic demo." }
+  }
+
+  func previewChangeGoals() {
+    guard demo else { return }
+    saveGoals("Make a small drawing every day")
+  }
+
+  func previewExcludeExample(_ excluded: Bool) {
+    guard demo else { return }
+    excludedDomains = excluded ? "example.com" : ""
+    applyRules()
+  }
+
+  func previewRemoveSavedSource() {
+    guard demo, let id = returnEntries.compactMap(\.archiveID).first,
+      let item = personalProfile.items.first(where: { $0.id == id })
+    else { return }
+    removeArchiveItem(item)
   }
 
   func archiveURL(for item: ArchiveItem) -> URL? {
@@ -253,14 +450,14 @@ final class AppModel: ObservableObject {
   }
 
   func rate(_ item: ArchiveItem, as rating: MaterialRating) {
-    guard !demo, let personalProfileStore else { return }
+    guard let personalProfileStore else { return }
     var updated = personalProfile
     updated.ratings[item.id] = rating
     updateProfile(updated, using: personalProfileStore)
   }
 
   func clearRating(_ item: ArchiveItem) {
-    guard !demo, let personalProfileStore else { return }
+    guard let personalProfileStore else { return }
     var updated = personalProfile
     updated.ratings[item.id] = nil
     updateProfile(updated, using: personalProfileStore)
@@ -285,7 +482,7 @@ final class AppModel: ObservableObject {
   }
 
   func removeArchiveItem(_ item: ArchiveItem) {
-    guard !demo, let personalProfileStore else { return }
+    guard let personalProfileStore else { return }
     var updated = personalProfile
     updated.items.removeAll { $0.id == item.id }
     updated.ratings[item.id] = nil
@@ -293,14 +490,16 @@ final class AppModel: ObservableObject {
   }
 
   func rateObservation(_ observation: Observation, as rating: MaterialRating) {
-    guard !demo, let personalProfileStore,
-      viewingPolicy.acceptedURL(observation.url) == observation.url
-    else { return }
-    let item = ArchiveItem(title: observation.title, source: .other, identity: observation.url)
+    ratePage(title: observation.title, url: observation.url, as: rating)
+  }
+
+  private func ratePage(title: String, url: String, as rating: MaterialRating) {
+    guard let personalProfileStore, let accepted = viewingPolicy.acceptedURL(url) else { return }
+    let item = ArchiveItem(title: title, source: .other, identity: accepted)
     var updated = personalProfile
     if !updated.items.contains(where: { $0.id == item.id }) { updated.items.append(item) }
     updated.ratings[item.id] = rating
-    updated.pageRatings[observation.url] = rating
+    updated.pageRatings[accepted] = rating
     updateProfile(updated, using: personalProfileStore)
   }
 
@@ -309,7 +508,7 @@ final class AppModel: ObservableObject {
   }
 
   func clearPersonalRating(for observation: Observation) {
-    guard !demo, let personalProfileStore else { return }
+    guard let personalProfileStore else { return }
     var updated = personalProfile
     updated.pageRatings[observation.url] = nil
     let item = ArchiveItem(title: observation.title, source: .other, identity: observation.url)
@@ -555,6 +754,7 @@ final class AppModel: ObservableObject {
   }
 
   func refresh() {
+    refreshReturns()
     do {
       let results =
         try store?.recent(
@@ -599,6 +799,7 @@ final class AppModel: ObservableObject {
   }
 
   private func tick() {
+    refreshReturns()
     refreshPermissions()
     guard capturing, !storageFailed else { return }
     guard accessibilityGranted else {
@@ -930,8 +1131,11 @@ final class AppModel: ObservableObject {
         correction: nil, status: "Needs review", checkedAt: Date(), attemptCount: 0),
       for: examples[1].1)
     classifications = classificationStore?.records ?? [:]
+    var linkedDemo = ArchiveItem(
+      title: "A practical guide to compiler architecture", source: .obsidian)
+    linkedDemo.url = "https://example.com/compilers"
     let demoItems = [
-      ArchiveItem(title: "A practical guide to compiler architecture", source: .obsidian),
+      linkedDemo,
       ArchiveItem(title: "Building a small language from scratch", source: .youtube),
       ArchiveItem(title: "Another productivity app to try", source: .x),
       ArchiveItem(title: "Generic list of best developer tools", source: .x),
@@ -953,6 +1157,12 @@ final class AppModel: ObservableObject {
         basis: .both, status: "Personal evaluation", checkedAt: Date(), attemptCount: 0),
       for: examples[0].1)
     personalEvaluations = personalEvaluationStore?.records ?? [:]
+    try returnQueue?.save(
+      ReturnMaterial(title: linkedDemo.title, rawURL: linkedDemo.url, archiveID: linkedDemo.id),
+      reason: "Sketch the parser before starting my small language", goal: demoProfile.goals,
+      policy: viewingPolicy)
+    returnQueue?.reload()
+    publishReturns()
     status = "Demo · capture is disabled"
   }
 }
