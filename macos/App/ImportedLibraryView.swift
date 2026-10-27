@@ -130,6 +130,13 @@ struct ImportedLibraryView: View {
         }
       }
       HStack(spacing: 8) {
+        Button("Return to this") {
+          model.beginReturn(ReturnMaterial(title: item.title, rawURL: item.url, archiveID: item.id))
+        }
+        .disabled(
+          !model.canReturn(ReturnMaterial(title: item.title, rawURL: item.url, archiveID: item.id))
+        )
+        .accessibilityLabel("Return to \(item.title)")
         Button("Open") { model.openArchiveItem(item) }
           .disabled(!canOpen).help(canOpen ? "Open in your browser" : "No available link")
           .accessibilityLabel("Open \(item.title)")

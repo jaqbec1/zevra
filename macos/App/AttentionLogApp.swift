@@ -59,6 +59,8 @@ private struct MenuContent: View {
 
 private struct ObservationsView: View {
   private enum Panel: String, CaseIterable, Identifiable {
+    case goals = "Current goals"
+    case returns = "Returns"
     case library = "Saved materials"
     case visits = "Browsing history"
     case general = "General"
@@ -69,6 +71,8 @@ private struct ObservationsView: View {
     var id: String { rawValue }
     var symbol: String {
       switch self {
+      case .goals: "scope"
+      case .returns: "bookmark"
       case .library: "books.vertical"
       case .visits: "clock"
       case .general: "gearshape"
@@ -80,6 +84,8 @@ private struct ObservationsView: View {
 
     var summary: String {
       switch self {
+      case .goals: "Your current goals and the materials you chose to return to."
+      case .returns: "Every saved return, including later and finished materials."
       case .library: "Imported notes, bookmarks and pages you have rated."
       case .visits: "Pages recorded automatically while you use Arc."
       case .general: "App startup and storage on this Mac."
@@ -91,7 +97,8 @@ private struct ObservationsView: View {
   }
 
   @ObservedObject var model: AppModel
-  @State private var panel: Panel? = .library
+  @Environment(\.scenePhase) private var scenePhase
+  @State private var panel: Panel? = .goals
   @State private var pendingKey = ""
   @State private var goalsDraft = ""
   @State private var interestDraft = ""
@@ -116,6 +123,8 @@ private struct ObservationsView: View {
         .padding(16)
         List(selection: $panel) {
           Section {
+            navigationItem(.goals)
+            navigationItem(.returns)
             navigationItem(.library)
             navigationItem(.visits)
           } header: {
@@ -154,7 +163,13 @@ private struct ObservationsView: View {
       }
       .navigationSplitViewColumnWidth(min: 210, ideal: 225, max: 270)
     } detail: {
-      switch panel ?? .library {
+      switch panel ?? .goals {
+      case .goals:
+        CurrentGoalsView(
+          model: model, showReturns: { panel = .returns }, showLibrary: { panel = .library },
+          showHistory: { panel = .visits }, editGoals: { panel = .profile })
+      case .returns:
+        ReturnsView(model: model)
       case .library:
         ImportedLibraryView(model: model, chooseSource: chooseSource, chooseBase: chooseBase)
       case .visits:
@@ -163,6 +178,7 @@ private struct ObservationsView: View {
         settings
       }
     }
+    .safeAreaInset(edge: .bottom, spacing: 0) { ReturnsStatusView(model: model) }
     .navigationSplitViewStyle(.balanced)
     .frame(minWidth: 860, minHeight: 600)
     .modifier(ZevraWindowSurface())
@@ -175,7 +191,16 @@ private struct ObservationsView: View {
     } message: {
       Text(model.notice ?? "")
     }
-    .onAppear { goalsDraft = model.personalProfile.goals }
+    .onAppear {
+      goalsDraft = model.personalProfile.goals
+      model.refreshReturns()
+    }
+    .onChange(of: scenePhase) { _, phase in
+      if phase == .active { model.refreshReturns() }
+    }
+    .sheet(item: $model.returnDraft) { material in
+      ReturnEditor(model: model, material: material)
+    }
     .onChange(of: model.personalProfile.goals) { _, value in goalsDraft = value }
     .sheet(
       item: $model.importDraft, onDismiss: { model.cancelImport() },
@@ -381,6 +406,9 @@ private struct ObservationsView: View {
         .font(.caption.weight(.medium))
         .foregroundStyle(ZevraStyle.secondaryText)
         HStack(spacing: 7) {
+          Button("Return to this") {
+            model.beginReturn(ReturnMaterial(title: observation.title, rawURL: observation.url))
+          }
           Button {
             model.openMaterial(observation)
           } label: {
@@ -395,7 +423,7 @@ private struct ObservationsView: View {
           }
           .help("Copy link")
           .accessibilityLabel("Copy link to \(observation.title)")
-          if !model.demo {
+          if !model.demo || model.personalProfile.evaluationEnabled {
             Menu {
               if model.personalProfile.evaluationEnabled {
                 if let evaluation = personal {
@@ -441,9 +469,12 @@ private struct ObservationsView: View {
     }
     .accessibilityElement(children: .contain)
     .contextMenu {
+      Button("Return to this") {
+        model.beginReturn(ReturnMaterial(title: observation.title, rawURL: observation.url))
+      }
       Button("Open in browser") { model.openMaterial(observation) }
       Button("Copy link") { model.copyLink(observation) }
-      if !model.demo {
+      if !model.demo || model.personalProfile.evaluationEnabled {
         Divider()
         if model.personalProfile.evaluationEnabled {
           Button("Worth my time") { model.rateObservation(observation, as: .worthwhile) }
@@ -639,16 +670,23 @@ private struct ObservationsView: View {
   private var profileSettings: some View {
     VStack(alignment: .leading, spacing: 24) {
       settingsSection("Current goals") {
+        if !model.profileAvailable {
+          Text("Your goals could not be read. Saved data has not been replaced.")
+            .foregroundStyle(ZevraStyle.secondaryText)
+        }
         TextEditor(text: $goalsDraft)
           .frame(minHeight: 76)
           .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
           .accessibilityLabel("Current goals for personal evaluation")
+          .disabled(!model.profileAvailable)
         HStack {
-          Text("Write what matters now. Archived interests are not treated as current goals.")
-            .font(.callout).foregroundStyle(ZevraStyle.secondaryText)
+          if model.profileAvailable {
+            Text("Write what matters now. Archived interests are not treated as current goals.")
+              .font(.callout).foregroundStyle(ZevraStyle.secondaryText)
+          }
           Spacer()
           Button("Save goals") { model.saveGoals(goalsDraft) }
-            .disabled(model.demo)
+            .disabled(!model.profileAvailable)
         }
 
       }
@@ -665,12 +703,14 @@ private struct ObservationsView: View {
         }
         HStack {
           TextField("Add an interest", text: $interestDraft)
+            .disabled(!model.profileAvailable)
           Button("Add") {
             model.addInterest(interestDraft)
             interestDraft = ""
           }
           .disabled(
-            model.demo || interestDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            model.demo || !model.profileAvailable
+              || interestDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         DisclosureGroup("Suggestions from imported titles") {
           ScrollView(.horizontal) {

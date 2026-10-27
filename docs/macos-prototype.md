@@ -4,6 +4,43 @@ The user selected Swift and SwiftUI on 2026-09-21. The first slice is a menu-bar
 
 The app is now named **Zevra** and is installed at `/Applications/Zevra.app`. It uses a regular macOS application window, with Dock and Command-Tab access, while retaining its menu-bar controls. Losing focus does not close the window. Existing technical identifiers (`com.jamatyka.AttentionLog`, the CloudKit container, and the local storage directory) remain stable across the display-name change.
 
+## Current goals and returns
+
+**Current goals** is the landing view. It shows your existing goal words and up to three ready returns. **See all returns** reaches every saved entry. Saving has no queue limit and needs no rating, goal, reason, capture, or AI key.
+
+Choose **Return to this** from **Saved materials**, **Browsing history**, or an existing **Jev estimate**. The sheet accepts an optional reason and an existing goal line. Saving again preserves the original reason, goal, save date, and lifecycle. **Return again** explicitly reactivates a finished entry. **Return now** brings back a deferred entry. Opening a link never completes a return.
+
+**Returns** separates **Ready**, **Later**, and **Finished**. **Done** and **Let go** remain distinct. Later dates become eligible through foreground, existing tick, or explicit refresh paths. They create no reminder, notification, or background job. Undo restores one previous entry during the current session, provided that entry has not changed and current site rules permit restoration. There is no redo or persistent undo history.
+
+The queue lives in local `return-queue.json`, separate from `PersonalProfile` and Core Data. Queue actions do not change the AI profile revision or start provider work. Writes use a private 0600 temporary file and atomic replacement before publishing. A missing file starts empty. An unreadable, corrupt, or unsupported file makes Returns unavailable with a persistent retry action. The app preserves its bytes. Failed writes retain the old queue and keep a save draft open.
+
+Site rules run before saving, rendering returns, and opening a return. Paused capture permits deliberate returns under the same rules. Newly excluded returns stay stored and show a redacted placeholder in the full panel. The placeholder and status messages expose no saved title, URL, reason, or goal. Changed goals retain their original words under **Earlier goal**. Removed library sources retain the saved snapshot with a source-removed note. Negative human feedback suppresses home featuring and estimates while retaining explicit returns in the full panel.
+
+The personal profile and evaluation stores load independently of the observation store. While the profile cannot be read, every return stays reachable in the full panel, and the home features none of them. Cards label the saved goal **Saved goal** and show no earlier-goal, source-removed, or negative-feedback note. Goal editing is disabled on the home and in the Profile panel. While the return queue cannot be read, return counts are hidden. A later startup failure does not replace an earlier startup notice. The `AppModel` load ordering was checked by reading `init`. `sh macos/check.sh` confirms only that it compiles and that the core tests pass. It has not been run natively with a corrupt profile.
+
+URL identity uses the existing accepted URL normalization after checking the supplied raw URL. Imported and visited aliases of that URL deduplicate. Linkless materials use a namespaced archive identity. A rated visit represented as a URL-less library item can remain separate from a saved web return. Zevra does not merge by title.
+
+The optional **Jev estimates** section uses at most three evaluations already stored locally. It requires enabled personal evaluation, the current profile revision, successful status, finite scores, confidence of at least 0.6, and worth of at least 3. Human ratings, known archive aliases, existing returns, and exclusions suppress estimates. The view uses the existing basis sentence and model confidence. It assigns no individual goal and fetches no additional evidence. Existing provider behavior is unchanged.
+
+### Isolated guidance preview
+
+Run this command from the checkout root. It builds a separate compile-time demo bundle without launching or installing it.
+
+```sh
+xcodebuild -quiet -project macos/AttentionLog.xcodeproj -scheme AttentionLog \
+  -configuration Debug -destination 'platform=macOS,arch=arm64' \
+  -derivedDataPath macos/build-guidance-preview \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) DEBUG ZEVRA_IMPORT_PREVIEW' \
+  PRODUCT_BUNDLE_IDENTIFIER=com.jamatyka.Zevra.GuidancePreview \
+  CODE_SIGNING_ALLOWED=NO build
+```
+
+The artifact is `macos/build-guidance-preview/Build/Products/Debug/Zevra.app`. All demo stores use memory. No installed data, preferences, capture, CloudKit, Keychain, or provider is used. **Preview scenarios** on Current goals can empty the home, reset fixtures, change goal words, remove a saved library source, and apply or restore an exclusion. Both save entry points, reasons, goal selection, all lifecycle controls, and undo work in the demo. **In a few seconds** in the Later sheet supports expiry checks through **Refresh**. History rating actions support negative-feedback checks. The empty demo still supports saving from synthetic history without goals or ratings.
+
+Verification on 2026-10-20 passed `sh macos/check.sh` with Swift formatting, all 60 native tests, and the unsigned Apple Silicon Debug build. The new tests exercise real temporary files, 0600 permissions, deferral and finished-state round trips, duplicate saves, stale undo, failed writes, corruption preservation, exclusions, source and goal changes, and estimate filtering including known rating aliases. The isolated preview build also passed, and its generated bundle identifier is `com.jamatyka.Zevra.GuidancePreview`. The CoreSimulator version warning was nonfatal for both macOS builds. The preview was not launched during implementation.
+
+The implementation owner verifies persistence and selection with synthetic tests and builds both artifacts. Native interaction and independent review are separate coordinator checks. These checks do not measure recommendation accuracy or real-life outcomes.
+
 ## Imported Library (0.3.0)
 
 **Library** shows imported notes and bookmarks separately from captured **Visits**. Search titles, links and topics or filter by source. Open saved links in the default browser, or edit titles and links while preserving identity and ratings. Importing a source opens a review before anything is saved.
