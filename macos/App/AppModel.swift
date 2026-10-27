@@ -91,14 +91,14 @@ final class AppModel: ObservableObject {
       personalProfileStore = try PersonalProfileStore(url: supportURL("personal-profile.json"))
       personalProfile = personalProfileStore?.profile ?? PersonalProfile()
     } catch {
-      notice = "Personal profile could not be read. Personal evaluation is paused."
+      notice = notice ?? "Personal profile could not be read. Personal evaluation is paused."
     }
     do {
       personalEvaluationStore = try PersonalEvaluationStore(
         url: supportURL("personal-evaluations.json"))
       personalEvaluations = personalEvaluationStore?.records ?? [:]
     } catch {
-      notice = "Personal evaluations could not be read. Personal evaluation is paused."
+      notice = notice ?? "Personal evaluations could not be read. Personal evaluation is paused."
     }
     do {
       store = try ObservationStore(
@@ -107,14 +107,16 @@ final class AppModel: ObservableObject {
         classificationStore = try ClassificationStore(url: supportURL("classifications.json"))
         classifications = classificationStore?.records ?? [:]
       } catch {
-        notice = "Saved suggestions could not be read. Jev is paused until this is resolved."
+        notice =
+          notice ?? "Saved suggestions could not be read. Jev is paused until this is resolved."
       }
       if demo { try loadDemo() }
       refresh()
     } catch {
       storageFailed = true
       status = "Storage unavailable · capture stopped"
-      notice = "The local database could not be opened. Existing data has not been replaced."
+      notice =
+        notice ?? "The local database could not be opened. Existing data has not been replaced."
     }
     guard !demo else {
       syncStatus = "Demo · synthetic data only"

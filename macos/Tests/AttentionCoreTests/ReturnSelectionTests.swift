@@ -49,8 +49,11 @@ private let selectionTime = Date(timeIntervalSince1970: 2_000_000)
     Issue.record("An allowed linkless return must remain visible")
     return
   }
-  #expect(!original.earlierGoal && !original.sourceRemoved)
-  #expect(current.earlierGoal && current.sourceRemoved)
+  #expect(
+    original.facts == ReturnFacts(earlierGoal: false, sourceRemoved: false, negativeFeedback: false)
+  )
+  #expect(
+    current.facts == ReturnFacts(earlierGoal: true, sourceRemoved: true, negativeFeedback: false))
   #expect(current.entry.goal == "  Build a language")
   #expect(current.entry.reason == "Implement a parser")
   #expect(ReturnContext.lines(in: "First\n\n  Second\n") == ["First", "  Second"])
@@ -192,7 +195,7 @@ func ineligibleEstimatesAreFilteredAlongsideAnEligibleControl(failure: String) {
 @Test func unreadableProfileFeaturesNothingAndMakesNoClaimsUnlikeKnownEmptyProfile() throws {
   let queue = ReturnQueue(url: nil)
   try queue.save(
-    ReturnMaterial(title: "Rejected notes", archiveID: "rejected"), goal: "Ship the parser",
+    ReturnMaterial(title: "Parser notes", archiveID: "parser-notes"), goal: "Ship the parser",
     policy: selectionPolicy, now: selectionTime)
   let known = ReturnContext()
   let knownCards = ReturnSelection.all(queue.entries, context: known, policy: selectionPolicy)
@@ -200,19 +203,33 @@ func ineligibleEstimatesAreFilteredAlongsideAnEligibleControl(failure: String) {
     Issue.record("An allowed return must remain visible")
     return
   }
-  #expect(knownCard.earlierGoal && knownCard.sourceRemoved)
+  #expect(
+    knownCard.facts == ReturnFacts(earlierGoal: true, sourceRemoved: true, negativeFeedback: false))
   #expect(
     ReturnSelection.ready(
       queue.entries, context: known, policy: selectionPolicy, now: selectionTime
     )
     .count == 1)
 
+  let rejected = ReturnContext(negativeArchiveIDs: ["parser-notes"])
+  let rejectedCards = ReturnSelection.all(
+    queue.entries, context: rejected, policy: selectionPolicy)
+  guard case .available(let rejectedCard) = rejectedCards[0] else {
+    Issue.record("Negative feedback must not hide an explicit return")
+    return
+  }
+  #expect(rejectedCard.facts?.negativeFeedback == true)
+  #expect(
+    ReturnSelection.ready(
+      queue.entries, context: rejected, policy: selectionPolicy, now: selectionTime
+    ).isEmpty)
+
   let unknownCards = ReturnSelection.all(queue.entries, context: nil, policy: selectionPolicy)
   guard case .available(let unknownCard) = unknownCards[0] else {
     Issue.record("Returns must stay reachable while the profile is unreadable")
     return
   }
-  #expect(!unknownCard.earlierGoal && !unknownCard.sourceRemoved && !unknownCard.negativeFeedback)
+  #expect(unknownCard.facts == nil)
   #expect(
     ReturnSelection.ready(queue.entries, context: nil, policy: selectionPolicy, now: selectionTime)
       .isEmpty)

@@ -23,11 +23,16 @@ public struct ReturnContext: Sendable {
   }
 }
 
-public struct ReturnCard: Identifiable, Sendable {
-  public let entry: ReturnEntry
+public struct ReturnFacts: Equatable, Sendable {
   public let earlierGoal: Bool
   public let sourceRemoved: Bool
   public let negativeFeedback: Bool
+}
+
+public struct ReturnCard: Identifiable, Sendable {
+  public let entry: ReturnEntry
+  /// nil while the personal profile cannot be read, so the card makes no goal, source, or feedback claim.
+  public let facts: ReturnFacts?
   public var id: String { entry.id }
 }
 
@@ -84,7 +89,6 @@ public struct JevEstimateSnapshot: Identifiable, Sendable {
 }
 
 public enum ReturnSelection {
-  /// A nil context means the profile is unreadable, so cards make no goal, source, or feedback claim.
   public static func all(
     _ entries: [ReturnEntry], context: ReturnContext?, policy: CapturePolicy
   ) -> [ReturnPresentation] {
@@ -92,29 +96,23 @@ public enum ReturnSelection {
       guard entry.isPermitted(by: policy) else {
         return .restricted(id: entry.id, state: entry.state)
       }
-      guard let context else {
-        return .available(
-          ReturnCard(
-            entry: entry, earlierGoal: false, sourceRemoved: false, negativeFeedback: false))
-      }
-      let negative =
-        entry.archiveID.map { context.negativeArchiveIDs.contains($0) } == true
-        || entry.url.map { context.negativeURLs.contains($0) } == true
-      return .available(
-        ReturnCard(
-          entry: entry, earlierGoal: entry.goal.map { !context.goalLines.contains($0) } ?? false,
+      let facts = context.map { context in
+        ReturnFacts(
+          earlierGoal: entry.goal.map { !context.goalLines.contains($0) } ?? false,
           sourceRemoved: entry.archiveID.map { !context.archiveIDs.contains($0) } ?? false,
-          negativeFeedback: negative))
+          negativeFeedback: entry.archiveID.map { context.negativeArchiveIDs.contains($0) } == true
+            || entry.url.map { context.negativeURLs.contains($0) } == true)
+      }
+      return .available(ReturnCard(entry: entry, facts: facts))
     }
   }
 
   public static func ready(
     _ entries: [ReturnEntry], context: ReturnContext?, policy: CapturePolicy, now: Date
   ) -> [ReturnCard] {
-    guard context != nil else { return [] }
-    return all(entries, context: context, policy: policy).compactMap { presentation in
+    all(entries, context: context, policy: policy).compactMap { presentation in
       guard case .available(let card) = presentation,
-        card.entry.state.group(at: now) == .ready, !card.negativeFeedback
+        card.entry.state.group(at: now) == .ready, card.facts?.negativeFeedback == false
       else { return nil }
       return card
     }

@@ -19,6 +19,10 @@ struct ReturnsView: View {
               : "Saved returns could not be read."
           )
           .foregroundStyle(ZevraStyle.secondaryText)
+          if !model.profileAvailable {
+            Text("Goal, source and feedback notes are paused while your profile cannot be read.")
+              .font(.callout).foregroundStyle(ZevraStyle.secondaryText)
+          }
         }
         Spacer()
         Button("Refresh", systemImage: "arrow.clockwise") { model.refreshReturns() }
@@ -87,14 +91,14 @@ struct ReturnCardView: View {
         Text(reason).font(.body).textSelection(.enabled)
       }
       if let goal = card.entry.goal {
-        Text("\(card.earlierGoal ? "Earlier goal" : "Goal") · \(goal)")
+        Text("\(goalLabel) · \(goal)")
           .font(.callout).foregroundStyle(ZevraStyle.secondaryText)
       }
-      if card.sourceRemoved {
+      if card.facts?.sourceRemoved == true {
         Text("Library source removed. Showing the snapshot you saved.")
           .font(.caption).foregroundStyle(ZevraStyle.secondaryText)
       }
-      if card.negativeFeedback {
+      if card.facts?.negativeFeedback == true {
         Text("You marked this not worth your time. Your explicit return is still saved here.")
           .font(.caption).foregroundStyle(ZevraStyle.secondaryText)
       }
@@ -131,6 +135,11 @@ struct ReturnCardView: View {
       Button("Return again") { model.changeReturn(card.id, to: .returnAgain) }
       Button("Remove return") { model.changeReturn(card.id, to: .remove) }
     }
+  }
+
+  private var goalLabel: String {
+    guard let facts = card.facts else { return "Saved goal" }
+    return facts.earlierGoal ? "Earlier goal" : "Goal"
   }
 
   private var stateLabel: String {

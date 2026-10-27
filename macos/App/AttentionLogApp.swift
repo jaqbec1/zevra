@@ -670,15 +670,21 @@ private struct ObservationsView: View {
   private var profileSettings: some View {
     VStack(alignment: .leading, spacing: 24) {
       settingsSection("Current goals") {
+        if !model.profileAvailable {
+          Text("Your goals could not be read. Saved data has not been replaced.")
+            .foregroundStyle(ZevraStyle.secondaryText)
+        }
         TextEditor(text: $goalsDraft)
           .frame(minHeight: 76)
           .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
           .accessibilityLabel("Current goals for personal evaluation")
+          .disabled(!model.profileAvailable)
         HStack {
           Text("Write what matters now. Archived interests are not treated as current goals.")
             .font(.callout).foregroundStyle(ZevraStyle.secondaryText)
           Spacer()
           Button("Save goals") { model.saveGoals(goalsDraft) }
+            .disabled(!model.profileAvailable)
         }
 
       }
