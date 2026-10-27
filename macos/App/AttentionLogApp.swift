@@ -680,8 +680,10 @@ private struct ObservationsView: View {
           .accessibilityLabel("Current goals for personal evaluation")
           .disabled(!model.profileAvailable)
         HStack {
-          Text("Write what matters now. Archived interests are not treated as current goals.")
-            .font(.callout).foregroundStyle(ZevraStyle.secondaryText)
+          if model.profileAvailable {
+            Text("Write what matters now. Archived interests are not treated as current goals.")
+              .font(.callout).foregroundStyle(ZevraStyle.secondaryText)
+          }
           Spacer()
           Button("Save goals") { model.saveGoals(goalsDraft) }
             .disabled(!model.profileAvailable)
@@ -701,12 +703,14 @@ private struct ObservationsView: View {
         }
         HStack {
           TextField("Add an interest", text: $interestDraft)
+            .disabled(!model.profileAvailable)
           Button("Add") {
             model.addInterest(interestDraft)
             interestDraft = ""
           }
           .disabled(
-            model.demo || interestDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            model.demo || !model.profileAvailable
+              || interestDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         DisclosureGroup("Suggestions from imported titles") {
           ScrollView(.horizontal) {

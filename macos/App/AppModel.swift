@@ -763,7 +763,7 @@ final class AppModel: ObservableObject {
     } catch {
       observations = []
       hasMoreObservations = false
-      notice = "Could not read saved materials. Try refreshing or reopening the app."
+      notice = notice ?? "Could not read saved materials. Try refreshing or reopening the app."
     }
   }
 
